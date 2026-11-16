@@ -132,3 +132,9 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border:0;border-radiu
 .cards2 .cd canvas{border-radius:12px;background:#2a2a2a}.cards2 .cd span{margin-top:7px;min-height:30px;white-space:normal;line-height:1.25;font-size:12.5px}
 .cards2 .pad{padding:8px 20px}.cards2 .mut.sm,.cards2 .fl,.cards2 .row{margin-left:20px;margin-right:20px}.cards2 .inp{width:calc(100% - 40px);margin:0 20px 6px}
 #ed .croprow button.on{background:var(--acc);color:#111}
+
+/* svg icon set */
+.ib svg,.chip svg,.galbtn svg,.fab svg,.flip svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.ib.sq svg{width:19px;height:19px}.flip svg,.fab svg{width:26px;height:26px}.galbtn svg{width:24px;height:24px}
+.chip svg{width:15px;height:15px;margin-right:6px}#gal-more svg{fill:currentColor}
+.galbtn span{display:grid;place-items:center}.galbtn.has span{display:none}

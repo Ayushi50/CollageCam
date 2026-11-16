@@ -29,13 +29,13 @@
   <!-- CAMERA -->
   <section id="cam" class="screen">
     <div class="topbar cam-top">
-      <button class="ib sq" id="c-flash" title="Flash">⚡</button>
-      <button class="ib sq" id="c-timer" title="Timer">⏱<span>Off</span></button>
-      <button class="ib sq" id="c-grid" title="Grid">▦</button>
+      <button class="ib sq" id="c-flash" title="Flash"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg></button>
+      <button class="ib sq" id="c-timer" title="Timer"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6"/></svg><span>Off</span></button>
+      <button class="ib sq" id="c-grid" title="Grid"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18M3 9h18M3 15h18"/></svg></button>
       <button class="ib sq" id="c-ratio" title="Aspect"><span>3:4</span></button>
-      <button class="ib sq" id="c-lens" title="Fisheye lens">◎</button>
-      <button class="ib sq" id="c-date" title="Date stamp">📅</button>
-      <button class="ib sq" id="c-set" title="Settings">⚙</button>
+      <button class="ib sq" id="c-lens" title="Fisheye lens"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/></svg></button>
+      <button class="ib sq" id="c-date" title="Date stamp"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></button>
+      <button class="ib sq" id="c-set" title="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg></button>
     </div>
     <div class="viewwrap">
       <div id="cam-view">
@@ -51,13 +51,13 @@
     </div>
     <div class="camdock">
       <div id="c-man" class="manual"></div>
-      <div class="row sp pad2"><button class="chip" id="c-manual">⚙ Manual</button><button class="chip acc" id="c-ai">✦ AI pick</button></div>
+      <div class="row sp pad2"><button class="chip" id="c-manual"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>Manual</button><button class="chip acc" id="c-ai">✦ AI pick</button></div>
       <div id="cam-filters"></div>
       <div id="c-modes" class="modes"><button data-m="photo" class="on">PHOTO</button><button data-m="video">VIDEO</button><button data-m="live">LIVE</button></div>
       <div class="shutrow">
-        <button id="cam-gal" class="galbtn" aria-label="Gallery"><span>▦</span></button>
+        <button id="cam-gal" class="galbtn" aria-label="Gallery"><span><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="M21 16l-5-5L5 21"/></svg></span></button>
         <button id="cam-shutter" class="shutter photo" aria-label="Shutter"><i></i></button>
-        <button id="cam-flip" class="ib flip" aria-label="Flip camera">⟲</button>
+        <button id="cam-flip" class="ib flip" aria-label="Flip camera"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h13l-3-3M20 16H7l3 3"/></svg></button>
       </div>
     </div>
   </section>
@@ -89,18 +89,18 @@
   <!-- GALLERY -->
   <section id="gal" class="screen">
     <div class="topbar">
-      <button class="ib" id="gal-back" style="display:none">‹</button><h1 id="gal-title">Gallery</h1>
-      <div class="row gap"><button class="chip" id="gal-sel">Select</button><button class="ib" id="gal-imp" title="Import">＋</button><button class="ib" id="gal-set" title="Settings">⚙</button></div>
+      <button class="ib" id="gal-back" style="display:none"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button><h1 id="gal-title">Gallery</h1>
+      <div class="row gap"><button class="chip" id="gal-sel">Select</button><button class="ib" id="gal-more" title="Album options" style="display:none"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/></svg></button><button class="ib" id="gal-imp" title="Import"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button><button class="ib" id="gal-set" title="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg></button></div>
     </div>
     <div class="seg" id="gal-tabs"><button data-t="recent" class="on">Recent</button><button data-t="albums">Albums</button></div>
     <div id="gal-body" class="galbody"></div>
     <div id="gal-bar" class="selbar"><span id="gal-count">0 selected</span><span class="row gap"><button class="chip" id="b-restore">Restore</button><button class="chip" id="b-fav">♡ Favourite</button><button class="chip" id="b-move">▤ Album</button><button class="chip danger" id="b-del">🗑 Delete</button></span></div>
-    <button class="fab" onclick="K.go('cam')" aria-label="Camera">◉</button>
+    <button class="fab" onclick="K.go('cam')" aria-label="Camera"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v12H4z"/><circle cx="12" cy="13" r="4"/></svg></button>
   </section>
 
   <!-- SETTINGS -->
   <section id="set" class="screen">
-    <div class="topbar"><button class="ib" id="set-back">‹</button><h1>Settings</h1><span style="width:44px"></span></div>
+    <div class="topbar"><button class="ib" id="set-back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg></button><h1>Settings</h1><span style="width:44px"></span></div>
     <div id="set-body" class="galbody"></div>
   </section>
 

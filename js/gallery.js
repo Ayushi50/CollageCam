@@ -59,7 +59,7 @@
   function render() {
     const root = K.$('#gal-body'), list = visible(); K.$('#gal-title').textContent = G.tab === 'albums' && !G.view ? 'Albums' : viewTitle();
     K.$$('#gal-tabs button').forEach((b) => b.classList.toggle('on', b.dataset.t === G.tab)); K.$('#gal-tabs').style.display = G.view ? 'none' : '';
-    K.$('#gal-back').style.display = G.view ? '' : 'none'; K.$('#gal-sel').textContent = G.select ? 'Cancel' : 'Select'; K.$('#gal-bar').classList.toggle('on', G.select);
+    K.$('#gal-back').style.display = G.view ? '' : 'none'; K.$('#gal-sel').textContent = G.select ? 'Cancel' : 'Select'; K.$('#gal-more').style.display = G.view && G.view.startsWith('a:') ? '' : 'none'; K.$('#gal-bar').classList.toggle('on', G.select);
     if (G.select) { K.$('#gal-count').textContent = `${G.sel.size} selected`; const del = G.view === 'deleted'; K.$('#gal-bar').classList.toggle('del', del); }
     root.innerHTML = '';
     if (G.tab === 'albums' && !G.view) return renderAlbums(root);
@@ -110,6 +110,12 @@
     K.$('#gal-set').onclick = () => K.go('set');
     K.$$('#gal-tabs button').forEach((b) => (b.onclick = () => { G.tab = b.dataset.t; G.view = null; G.select = false; G.sel.clear(); render(); }));
     K.$('#gal-back').onclick = () => { G.view = null; G.select = false; G.sel.clear(); render(); };
+    K.$('#gal-more').onclick = () => {
+      const al = albums.find((a) => 'a:' + a.id === G.view); if (!al) return;
+      const s = K.sheet(`<h3>Album</h3><input class="inp" id="alb-r" maxlength="24" value="${K.esc(al.name)}"><div class="row gap" style="margin-top:10px"><button class="btn pri" data-ren>Rename</button><button class="btn danger" data-del>Delete album</button></div><p class="mut sm">Deleting an album keeps its photos in your gallery.</p>`);
+      K.$('[data-ren]', s.el).onclick = async () => { const n = K.$('#alb-r', s.el).value.trim(); if (!n) return; al.name = n; await K.db.putAlbum(al); s.close(); K.toast('Album renamed'); render(); };
+      K.$('[data-del]', s.el).onclick = async () => { s.close(); if (!(await K.confirm('Delete album?', 'Photos stay in your gallery.', 'Delete album'))) return; for (const i of items.filter((x) => x.album === al.id)) { i.album = null; await K.db.put(i); } await K.db.delAlbum(al.id); albums = albums.filter((x) => x !== al); G.view = null; render(); };
+    };
     K.$('#gal-sel').onclick = () => { G.select = !G.select; G.sel.clear(); render(); };
     K.$('#gal-imp').onclick = () => K.$('#imp-file').click();
     const inp = K.$('#imp-file'); inp.onchange = async () => { const f = [...inp.files]; inp.value = ''; if (f.length) { await K.importFiles(f); if (K.cur === 'cam') K.go('gal'); } };

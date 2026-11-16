@@ -3,8 +3,8 @@
   const K = window.K;
   const cam = (K.cam = { facing: 'environment', mode: 'photo', ratio: '3:4', timer: 0, grid: false, flash: false, zoom: 1, lens: false, dateOn: true,
     m: { exp: 0, wb: 0, iso: 0, blur: 0, beauty: 0, k: 1, temp: 0, tint: 0 }, filter: 'dv1', stream: null, rec: null, busy: false, raw: false });
-  let video, cv, ctx, acc, actx, strip, raf = 0, lastT = 0, frameN = 0, stripT = 0, recStart = 0, recTick = 0, lastThumb = null;
-  const RATIO = { '3:4': 4 / 3, '9:16': 16 / 9, '1:1': 1 };
+  let set0, video, cv, ctx, acc, actx, strip, raf = 0, lastT = 0, frameN = 0, stripT = 0, recStart = 0, recTick = 0, lastThumb = null;
+  const RATIO = { '3:4': 4 / 3, '4:5': 5 / 4, '9:16': 16 / 9, '1:1': 1 };
   const pw = () => (cam.mode === 'photo' ? 400 : 480);
 
   function size() {
@@ -96,14 +96,14 @@
 
   /* ---------- UI ---------- */
   K.initCamera = () => {
-    video = K.$('#cam-video'); cv = K.$('#cam-cv'); ctx = K.ctx(cv); acc = K.canvas(400, 533); actx = K.ctx(acc); cam.filter = K.S.filter; cam.ratio = K.S.ratio; cam.dateOn = K.S.dateOn;
+    video = K.$('#cam-video'); cv = K.$('#cam-cv'); ctx = K.ctx(cv); acc = K.canvas(400, 533); actx = K.ctx(acc); cam.filter = K.S.filter; cam.ratio = RATIO[K.S.ratio] ? K.S.ratio : '3:4'; set0 = 1; cam.dateOn = K.S.dateOn;
     size();
     strip = K.filterStrip(K.$('#cam-filters'), { current: () => cam.filter, onpick: (id) => { cam.filter = id; } });
     const set = (id, txt) => (K.$(id).textContent = txt);
     K.$('#c-flash').onclick = (e) => { cam.flash = !cam.flash; e.currentTarget.classList.toggle('on', cam.flash); K.toast(cam.flash ? 'Flash on' : 'Flash off', 900); };
     K.$('#c-timer').onclick = () => { cam.timer = { 0: 3, 3: 5, 5: 10, 10: 0 }[cam.timer]; set('#c-timer span', cam.timer ? cam.timer + 's' : 'Off'); K.$('#c-timer').classList.toggle('on', !!cam.timer); };
     K.$('#c-grid').onclick = (e) => { cam.grid = !cam.grid; e.currentTarget.classList.toggle('on', cam.grid); K.$('#cam-grid').classList.toggle('on', cam.grid); };
-    K.$('#c-ratio').onclick = () => { cam.ratio = { '3:4': '9:16', '9:16': '1:1', '1:1': '3:4' }[cam.ratio]; set('#c-ratio span', cam.ratio); size(); };
+    K.$('#c-ratio').onclick = () => { cam.ratio = { '3:4': '4:5', '4:5': '9:16', '9:16': '1:1', '1:1': '3:4' }[cam.ratio]; set('#c-ratio span', cam.ratio); size(); };
     K.$('#c-lens').onclick = (e) => { cam.lens = !cam.lens; e.currentTarget.classList.toggle('on', cam.lens); K.toast(cam.lens ? 'Fisheye lens on' : 'Fisheye off', 900); };
     K.$('#c-date').onclick = (e) => { cam.dateOn = !cam.dateOn; e.currentTarget.classList.toggle('on', cam.dateOn); };
     K.$('#c-set').onclick = () => K.go('set'); K.$('#cam-gal').onclick = () => K.go('gal'); K.$('#c-date').classList.toggle('on', cam.dateOn);

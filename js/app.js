@@ -48,7 +48,7 @@
     const sel = (opts, cur, cb) => { const s = K.h(`<select class="inp sm">${opts.map(([v, n]) => `<option value="${v}" ${v === cur ? 'selected' : ''}>${n}</option>`).join('')}</select>`); s.onchange = () => cb(s.value); return s; };
     const tg = (key, cb) => { const t = K.h(`<label class="tg"><input type="checkbox" ${K.S[key] ? 'checked' : ''}><i></i></label>`); K.$('input', t).onchange = (e) => { K.S[key] = e.target.checked; K.save(); cb && cb(); }; return t; };
     row('Default filter', sel(K.PRESETS.map((p) => [p.id, `${p.name} (${p.cat})`]), K.S.filter, (v) => { K.S.filter = v; K.save(); K.cam.filter = v; }));
-    row('Default ratio', sel(['3:4', '9:16', '4:5', '1:1'].map((r) => [r, r]), K.S.ratio, (v) => { K.S.ratio = v; K.save(); if (K.cam.ratios !== false && ['3:4', '9:16', '1:1'].includes(v)) K.cam.ratio = v; }));
+    row('Default ratio', sel(['3:4', '9:16', '4:5', '1:1'].map((r) => [r, r]), K.S.ratio, (v) => { K.S.ratio = v; K.save(); K.cam.ratio = v; K.$('#c-ratio span').textContent = v; }));
     row('Date stamp', tg('dateOn', () => { K.cam.dateOn = K.S.dateOn; K.$('#c-date').classList.toggle('on', K.cam.dateOn); }), 'Add to new photos');
     row('Date stamp style', sel(K.WM_STYLES.map((s) => [s.id, s.name]), K.S.dateStyle, (v) => { K.S.dateStyle = v; K.save(); }));
     row('Save originals', tg('saveOrig'), 'Keep untouched originals; edits stay non-destructive');

@@ -11,7 +11,7 @@
       const t = K.canvas(w, h), tc = K.ctx(t, 1); tc.drawImage(src, 0, 0, w, h); const d = tc.getImageData(0, 0, w, h).data, n = w * h;
       // background samples from border ring → 3 centres (k-means)
       const ring = Math.max(2, Math.round(Math.min(w, h) * 0.07)), pts = [];
-      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (x < ring || y < ring || x >= w - ring || y >= h - ring) { const i = (y * w + x) * 4; pts.push([d[i], d[i + 1], d[i + 2]]); }
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (y < ring || ((x < ring || x >= w - ring) && y < h * 0.65)) { const i = (y * w + x) * 4; pts.push([d[i], d[i + 1], d[i + 2]]); }
       let cs = [pts[0], pts[(pts.length / 3) | 0], pts[((pts.length * 2) / 3) | 0]].map((p) => p.slice());
       const asg = new Int8Array(pts.length), sig = [30, 30, 30];
       for (let it = 0; it < 6; it++) {
@@ -24,12 +24,12 @@
       const score = new Float32Array(n); let hist = new Float32Array(64), mx = 0;
       for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
         const i = y * w + x, p = i * 4; let best = 1e9; cs.forEach((c, j) => { const dd = Math.sqrt(((d[p] - c[0]) ** 2 + (d[p + 1] - c[1]) ** 2 + (d[p + 2] - c[2]) ** 2) / 3) / sig[j]; if (dd < best) best = dd; });
-        const nd = Math.hypot((x / w - 0.5) * 2, (y / h - 0.5) * 2) / 1.41; best *= 1.35 - 0.7 * nd; score[i] = best; hist[Math.min(63, (best * 8) | 0)]++;
+        const nd = Math.hypot((x / w - 0.5) * 2, (y / h - 0.5) * 2) / 1.41; best *= 1.7 - 1.35 * nd; score[i] = best; hist[Math.min(63, (best * 8) | 0)]++;
       }
       // Otsu
       let tot = n, sumAll = 0; for (let i = 0; i < 64; i++) sumAll += i * hist[i]; let wB = 0, sB = 0, bestV = -1, th = 8;
       for (let i = 0; i < 64; i++) { wB += hist[i]; if (!wB) continue; const wF = tot - wB; if (!wF) break; sB += i * hist[i]; const mB = sB / wB, mF = (sumAll - sB) / wF, v = wB * wF * (mB - mF) ** 2; if (v > bestV) { bestV = v; th = i; } }
-      const thr = Math.max(1.3, (th + 1) / 8);
+      const thr = Math.max(1.0, Math.min((th + 1) / 8, 2.2));
       let m = new Float32Array(n); for (let i = 0; i < n; i++) m[i] = score[i] > thr ? 1 : 0;
       m = this.box(this.box(m, w, h, 2), w, h, 2); for (let i = 0; i < n; i++) m[i] = m[i] > 0.5 ? 1 : 0;
       // largest component near centre
@@ -43,7 +43,28 @@
       while (stack.length) { const q = stack.pop(), qx = q % w, qy = (q / w) | 0; [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dx, dy]) => { const nx = qx + dx, ny = qy + dy; if (nx >= 0 && ny >= 0 && nx < w && ny < h) { const ni = ny * w + nx; if (!m[ni] && !bgm[ni]) { bgm[ni] = 1; stack.push(ni); } } }); }
       let area = 0; for (let i = 0; i < n; i++) { if (!bgm[i]) { m[i] = 1; area++; } else m[i] = 0; }
       const cov = area / n; if (cov < 0.04 || cov > 0.9) return this.ellipse(w, h);
-      m = this.box(m, w, h, 1); return this.toCanvas(m, w, h);
+      m = this.box(m, w, h, 1); const coarse = this.toCanvas(m, w, h); try { return this.refine(src, coarse); } catch (e) { return coarse; }
+    },
+
+    km(d, idx, k) { // small k-means on RGB samples
+      const pts = [], stp = Math.max(1, Math.floor(idx.length / 700)); for (let i = 0; i < idx.length; i += stp) pts.push(idx[i]);
+      const cen = []; for (let j = 0; j < k; j++) { const p = pts[Math.floor((j * pts.length) / k)]; cen.push([d[p * 4], d[p * 4 + 1], d[p * 4 + 2]]); }
+      for (let it = 0; it < 5; it++) { const sm = cen.map(() => [0, 0, 0, 0]); pts.forEach((p) => { let b = 0, bd = 1e9; cen.forEach((c, j) => { const dd = (d[p * 4] - c[0]) ** 2 + (d[p * 4 + 1] - c[1]) ** 2 + (d[p * 4 + 2] - c[2]) ** 2; if (dd < bd) { bd = dd; b = j; } }); sm[b][0] += d[p * 4]; sm[b][1] += d[p * 4 + 1]; sm[b][2] += d[p * 4 + 2]; sm[b][3]++; }); sm.forEach((s, j) => { if (s[3]) cen[j] = [s[0] / s[3], s[1] / s[3], s[2] / s[3]]; }); }
+      return cen;
+    },
+    /* snap the coarse mask edge to real colour edges: re-classify a band around the boundary with fg/bg colour models */
+    refine(src, mc) {
+      const sc = Math.min(1, 400 / Math.max(src.width, src.height)), w = Math.max(8, Math.round(src.width * sc)), h = Math.max(8, Math.round(src.height * sc)), N = w * h;
+      const t = K.canvas(w, h), tx = K.ctx(t, 1); tx.drawImage(src, 0, 0, w, h); const d = tx.getImageData(0, 0, w, h).data;
+      const m = K.canvas(w, h), mx = K.ctx(m, 1); mx.imageSmoothingQuality = 'high'; mx.drawImage(mc, 0, 0, w, h); const md = mx.getImageData(0, 0, w, h).data;
+      const b = new Float32Array(N); for (let i = 0; i < N; i++) b[i] = md[i * 4 + 3] > 127 ? 1 : 0;
+      const sm = this.box(b, w, h, 5), fg = [], bg = []; for (let i = 0; i < N; i++) { if (sm[i] > 0.98) fg.push(i); else if (sm[i] < 0.02) bg.push(i); }
+      if (fg.length < 80 || bg.length < 80) return mc;
+      const F = this.km(d, fg, 3), B = this.km(d, bg, 3), out = new Float32Array(N);
+      const dist = (i, cs) => { let best = 1e9; for (const c of cs) { const dd = (d[i * 4] - c[0]) ** 2 + (d[i * 4 + 1] - c[1]) ** 2 + (d[i * 4 + 2] - c[2]) ** 2; if (dd < best) best = dd; } return Math.sqrt(best); };
+      for (let i = 0; i < N; i++) { if (sm[i] > 0.98) out[i] = 1; else if (sm[i] < 0.02) out[i] = 0; else out[i] = 1 / (1 + Math.exp(-((dist(i, B) - dist(i, F)) / 14 + (sm[i] - 0.5) * 5))); }
+      let r = this.box(out, w, h, 2); for (let i = 0; i < N; i++) r[i] = r[i] > 0.5 ? 1 : 0; r = this.box(r, w, h, 1);
+      return this.toCanvas(r, w, h);
     },
     ellipse(w, h) { const c = K.canvas(w, h), x = K.ctx(c); x.fillStyle = '#fff'; x.beginPath(); x.ellipse(w / 2, h / 2, w * 0.38, h * 0.42, 0, 0, TAU); x.fill(); return c; },
     full(w, h) { const c = K.canvas(w, h), x = K.ctx(c); x.fillStyle = '#fff'; x.fillRect(0, 0, w, h); return c; },
@@ -94,10 +115,17 @@
     for (let y = 1; y < H - 1; y++) for (let px = 1; px < W - 1; px++) { const i = y * W + px, gx = L[i + 1] - L[i - 1], gy = L[i + W] - L[i - W], g = Math.min(1, Math.hypot(gx, gy) / 70); if (g > 0.25) { const a = (g - 0.25) * amt, j = i * 4; d[j] = d[j] * (1 - a) + 50 * a; d[j + 1] = d[j + 1] * (1 - a) + 40 * a; d[j + 2] = d[j + 2] * (1 - a) + 70 * a; } }
     x.putImageData(im, 0, 0);
   };
-  K.paintCanvas = (c) => { const r = Math.max(2, Math.round(c.width / 110)); K.kuwahara(c, r); inkEdges(c, 0.55); const x = K.ctx(c); x.save(); x.globalCompositeOperation = 'source-atop'; x.globalAlpha = 0.14; x.fillStyle = '#fff6e0'; x.fillRect(0, 0, c.width, c.height); x.restore(); return c; };
-
+  K.paintCanvas = (c) => {
+    const orig = K.canvas(c.width, c.height); K.ctx(orig).drawImage(c, 0, 0);
+    const r = Math.max(2, Math.round(c.width / 150)); K.kuwahara(c, r);
+    const x = K.ctx(c); x.save(); x.globalCompositeOperation = 'source-atop'; x.globalAlpha = 0.32; x.drawImage(orig, 0, 0); // keep fine detail
+    x.globalAlpha = 0.14; x.fillStyle = '#fff6e0'; x.fillRect(0, 0, c.width, c.height); x.restore();
+    inkEdges(c, 0.5);
+    x.save(); x.globalCompositeOperation = 'source-atop'; x.globalAlpha = 0.18; x.fillStyle = x.createPattern(noiseTile(), 'repeat'); x.fillRect(0, 0, c.width, c.height); x.restore(); // paper grain
+    return c;
+  };
   /* ---------- drawing helpers ---------- */
-  const noiseTile = (() => { let t; return () => { if (t) return t; t = K.canvas(256, 256); const x = K.ctx(t, 1), im = x.createImageData(256, 256), R = K.rng(11); for (let i = 0; i < im.data.length; i += 4) { const v = 128 + (R() - 0.5) * 70; im.data[i] = im.data[i + 1] = im.data[i + 2] = v; im.data[i + 3] = 255; } x.putImageData(im, 0, 0); return t; }; })();
+  var noiseTile = (() => { let t; return () => { if (t) return t; t = K.canvas(256, 256); const x = K.ctx(t, 1), im = x.createImageData(256, 256), R = K.rng(11); for (let i = 0; i < im.data.length; i += 4) { const v = 128 + (R() - 0.5) * 70; im.data[i] = im.data[i + 1] = im.data[i + 2] = v; im.data[i + 3] = 255; } x.putImageData(im, 0, 0); return t; }; })();
   const paper = (ctx, W, H, E, base, o = {}) => {
     ctx.fillStyle = base; ctx.fillRect(0, 0, W, H);
     const R = K.rng(E.seed + 1); ctx.save(); ctx.globalCompositeOperation = 'multiply'; ctx.globalAlpha = o.noise == null ? 0.22 : o.noise; ctx.fillStyle = ctx.createPattern(noiseTile(), 'repeat'); ctx.fillRect(0, 0, W, H); ctx.restore();

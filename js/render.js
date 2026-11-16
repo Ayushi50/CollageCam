@@ -48,7 +48,7 @@
 
   /* painted subject cutout */
   const subject = (ph, st, pxW) => {
-    const mk = K.getMask(ph, st), res = K.clamp(Math.round(pxW / 8) * 8, 96, 560);
+    const mk = K.getMask(ph, st), res = K.clamp(Math.round(pxW / 8) * 8, 96, 720);
     return lru(subjCache, [ph.id, ph.ver, st.col.mv, fkey(st.f), res, st.crop.rot, st.crop.flip, mk.width].join('|'), () => {
       const asp = st.crop.rot % 2 ? ph.h / ph.w : ph.w / ph.h, w = asp >= 1 ? res : Math.round(res * asp), h = asp >= 1 ? Math.round(res / asp) : res;
       const cell = K.photoCell(ph, st, w, h, { main: false, crop: { rot: st.crop.rot, flip: st.crop.flip } }), c = K.canvas(w, h), x = K.ctx(c); x.drawImage(cell, 0, 0);
@@ -82,7 +82,7 @@
     if (st.col.id) {
       const tpl = K.COLMAP[st.col.id];
       const E = {
-        sc, seed, R: K.rng(seed + 31), v: st.col.v, c: st.col, date: K.fmtDate(new Date(st.wm.date || date), 'type'),
+        sc, seed, R: K.rng(seed + 31), v: st.col.v, c: st.col, date: st.wm.on ? '' : K.fmtDate(new Date(st.wm.date || date), 'type'),
         cell(i, w, h) {
           const p = i === 0 ? ph : others[(i - 1) % others.length], same = p === ph; let crop;
           if (i > 0 && same) crop = { zoom: 1 + 0.18 * i, px: ((i % 2) * 2 - 1) * 0.05 * i, py: 0.04 * i };
