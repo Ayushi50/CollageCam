@@ -41,7 +41,7 @@
 
   K.getMask = (ph, st) => {
     let m = ph.masks.get(st.col.mv);
-    if (!m) { m = K.seg.auto(ph.src); ph.masks.set(st.col.mv, m); }
+    if (!m) { m = K.seg.autoArt(ph.src); ph.masks.set(st.col.mv, m); }
     return m;
   };
   const tintC = (cv, col) => { const t = K.canvas(cv.width, cv.height), x = K.ctx(t); x.drawImage(cv, 0, 0); x.globalCompositeOperation = 'source-in'; x.fillStyle = col; x.fillRect(0, 0, t.width, t.height); return t; };
@@ -65,30 +65,17 @@
     x.putImageData(im, 0, 0);
   };
 
-  /* painted subject cutout */
-  const subject = (ph, st, pxW) => {
-    const mk = K.getMask(ph, st), res = K.clamp(Math.round(pxW / 8) * 8, 96, 720);
-    return lru(subjCache, [ph.id, ph.ver, st.col.mv, fkey(st.f), res, st.crop.rot, st.crop.flip, mk.width].join('|'), () => {
-      const asp = st.crop.rot % 2 ? ph.h / ph.w : ph.w / ph.h, w = asp >= 1 ? res : Math.round(res * asp), h = asp >= 1 ? Math.round(res / asp) : res;
-      const cell = K.photoCell(ph, st, w, h, { main: false, crop: { rot: st.crop.rot, flip: st.crop.flip } }), c = K.canvas(w, h), x = K.ctx(c); x.drawImage(cell, 0, 0);
-      const mc = K.canvas(w, h), mx = K.ctx(mc); drawXform(mx, mk, mk.width, mk.height, w, h, { rot: st.crop.rot, flip: st.crop.flip, zoom: 1, px: 0, py: 0 });
-      const mctx = K.ctx(mc, 1), mi = mctx.getImageData(0, 0, w, h), md = mi.data; for (let i = 3; i < md.length; i += 4) md[i] = Math.max(0, Math.min(255, (md[i] - 128) * 1.9 + 128)); mctx.putImageData(mi, 0, 0);
-      const cov = K.seg.coverage(mc);
-      x.globalCompositeOperation = 'destination-in';
-      if (cov < 0.02) { const g = x.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.25, w / 2, h / 2, Math.max(w, h) * 0.55); g.addColorStop(0, '#000'); g.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = g; x.fillRect(0, 0, w, h); }
-      else x.drawImage(mc, 0, 0);
-      x.globalCompositeOperation = 'destination-in'; { const fb = x.createLinearGradient(0, h * 0.86, 0, h); fb.addColorStop(0, '#000'); fb.addColorStop(1, 'rgba(0,0,0,.05)'); x.fillStyle = fb; x.fillRect(0, 0, w, h); const fl = x.createLinearGradient(0, 0, w * 0.06, 0); fl.addColorStop(0, 'rgba(0,0,0,.15)'); fl.addColorStop(1, '#000'); x.fillStyle = fl; x.fillRect(0, 0, w, h); const fr = x.createLinearGradient(w * 0.94, 0, w, 0); fr.addColorStop(0, '#000'); fr.addColorStop(1, 'rgba(0,0,0,.15)'); x.fillStyle = fr; x.fillRect(0, 0, w, h); }
-      x.globalCompositeOperation = 'source-over';
-      const d = K.ctx(c, 1).getImageData(0, 0, w, h).data; let x0 = w, y0 = h, x1 = 0, y1 = 0;
-      for (let yy = 0; yy < h; yy++) for (let xx = 0; xx < w; xx++) if (d[(yy * w + xx) * 4 + 3] > 40) { if (xx < x0) x0 = xx; if (xx > x1) x1 = xx; if (yy < y0) y0 = yy; if (yy > y1) y1 = yy; }
-      if (x1 <= x0 || y1 <= y0) { x0 = 0; y0 = 0; x1 = w - 1; y1 = h - 1; }
-      const pad = Math.round(res * 0.02), bx = Math.max(0, x0 - pad), by = Math.max(0, y0 - pad), bw = Math.min(w - bx, x1 - x0 + 2 * pad), bh = Math.min(h - by, y1 - y0 + 2 * pad), out = K.canvas(bw, bh);
-      K.ctx(out).drawImage(c, bx, by, bw, bh, 0, 0, bw, bh);
-      levelsLift(out);
-      K.paintCanvas(out); wetEdge(out);
-      const ol = K.canvas(bw + 16, bh + 16), ox = K.ctx(ol); ox.drawImage(out, 8, 8);
-      return { canvas: ol };
-    }, 6);
+  /* painted subject cutout: crop to the mask box, filter, paint, then apply the mask (original Kapi Web pipeline) */
+  const subject = (ph, st, pxW, pxH) => {
+    const M = K.getMask(ph, st), bb = K.maskBox(M), kx = ph.w / M.width, ky = ph.h / M.height, sx = bb.x * kx, sy = bb.y * ky, sw = bb.w * kx, sh = bb.h * ky;
+    const k = Math.min(pxW / sw, (pxH || pxW) / sh, 1.2), tw = Math.max(8, Math.round(sw * k)), th = Math.max(8, Math.round(sh * k));
+    return lru(subjCache, [ph.id, ph.ver, st.col.mv, tw, th, fkey(st.f)].join('|'), () => {
+      const c = K.canvas(tw, th), g = K.ctx(c, 1); g.drawImage(ph.src, sx, sy, sw, sh, 0, 0, tw, th);
+      K.filterCanvas(c, K.preset(st.f.id), { k: st.f.k, temp: st.f.temp, tint: st.f.tint, exp: st.f.exp, wb: st.f.wb, iso: st.f.iso, beauty: st.f.beauty, seed: K.hash(ph.id) % 997 });
+      K.paintify(c);
+      g.globalCompositeOperation = 'destination-in'; g.imageSmoothingQuality = 'high'; g.drawImage(M, bb.x, bb.y, bb.w, bb.h, 0, 0, tw, th);
+      return { canvas: c };
+    }, 16);
   };
 
   /* main render. o: {width, others:[photos], raw:bool(no edits)} → canvas */
@@ -107,7 +94,7 @@
           if (i > 0 && same) crop = { zoom: 1 + 0.18 * i, px: ((i % 2) * 2 - 1) * 0.05 * i, py: 0.04 * i };
           return K.photoCell(p, st, w * sc, h * sc, { main: i === 0, crop });
         },
-        subject(pxw) { return subject(ph, st, pxw); },
+        subject(pxw, pxh) { return subject(ph, st, pxw, pxh); },
       };
       ctx.save(); ctx.scale(sc, sc); tpl.draw(ctx, 1080, Hd, E); ctx.restore();
     } else ctx.drawImage(K.photoCell(ph, st, W, H, { main: true }), 0, 0);

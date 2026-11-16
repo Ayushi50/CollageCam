@@ -157,7 +157,7 @@
 
   /* subject cut-out */
   async function modelMask() { const e = C(), mv0 = e.st.col.mv, ph = e.ph; const m = await K.seg.model(ph.src); if (m && C() === e && e.st.col.mv === mv0 && e.st.col.id) { const nv = Math.max(...ph.masks.keys(), 0) + 1; ph.masks.set(nv, m); mut((s) => { s.col.mv = nv; }); K.toast('Cut-out refined with on-device model'); } }
-  async function autoCut() { const e = C(); K.toast('Finding subject…', 900); await new Promise((r) => setTimeout(r, 30)); let m = await K.seg.model(e.ph.src); if (!m) m = K.seg.auto(e.ph.src); const nv = Math.max(...e.ph.masks.keys(), 0) + 1; e.ph.masks.set(nv, m); mut((s) => { s.col.mv = nv; }); }
+  async function autoCut() { const e = C(); K.toast('Finding subject…', 900); await new Promise((r) => setTimeout(r, 30)); let m = await K.seg.model(e.ph.src); if (!m) m = K.seg.autoArt(e.ph.src); const nv = Math.max(...e.ph.masks.keys(), 0) + 1; e.ph.masks.set(nv, m); mut((s) => { s.col.mv = nv; }); }
   function openCutout(o = {}) {
     const e = C(), ph = e.ph; const gw = ph.w >= ph.h ? 256 : Math.max(8, Math.round((256 * ph.w) / ph.h)), gh = ph.w >= ph.h ? Math.max(8, Math.round((256 * ph.h) / ph.w)) : 256;
     const base = o.guide ? K.seg.full(gw, gh) : K.getMask(ph, e.st); let mk = K.canvas(base.width, base.height); K.ctx(mk).drawImage(base, 0, 0);
@@ -181,16 +181,16 @@
       K.toast('Cutting out…', 900); await new Promise((r) => setTimeout(r, 30)); clearSeeds();
       const rect = { x0, y0, x1, y1 }; let m = null, usedAI = false;
       if (K.S.model) { m = await K.seg.model(ph.src); if (m) { usedAI = true; const cc = K.canvas(m.width, m.height), cx = K.ctx(cc); cx.drawImage(m, 0, 0); cx.globalCompositeOperation = 'destination-in'; cx.fillStyle = '#000'; cx.fillRect(x0 * cc.width, y0 * cc.height, (x1 - x0) * cc.width, (y1 - y0) * cc.height); m = cc; } }
-      if (!m) m = K.seg.auto(ph.src, rect); s.drew = true; s.usedAI = usedAI; mk = K.canvas(base.width, base.height); K.ctx(mk).drawImage(m, 0, 0, mk.width, mk.height); boxR = null; paint();
+      if (!m) m = K.seg.autoRect(ph.src, rect); s.drew = true; s.usedAI = usedAI; mk = K.canvas(base.width, base.height); K.ctx(mk).drawImage(m, 0, 0, mk.width, mk.height); boxR = null; paint();
       mode = 'add'; K.$$('[data-m]', s.el).forEach((x) => x.classList.toggle('on', x.dataset.m === 'add')); K.toast(usedAI ? 'AI cut-out ✓ · refine with Add / Erase' : 'Colour cut-out · paint green on the subject and red on the background to fix it', 3200);
     };
     ['pointerup', 'pointercancel'].forEach((n) => cv.addEventListener(n, endBox));
-    K.$('[data-a]', s.el).onclick = async () => { K.toast('Finding subject…', 900); await new Promise((r) => setTimeout(r, 20)); const m = (await K.seg.model(ph.src)) || K.seg.auto(ph.src); mk = K.canvas(base.width, base.height); K.ctx(mk).drawImage(m, 0, 0, mk.width, mk.height); paint(); };
+    K.$('[data-a]', s.el).onclick = async () => { K.toast('Finding subject…', 900); await new Promise((r) => setTimeout(r, 20)); const m = (await K.seg.model(ph.src)) || K.seg.autoArt(ph.src); mk = K.canvas(base.width, base.height); K.ctx(mk).drawImage(m, 0, 0, mk.width, mk.height); paint(); };
     K.$('[data-smart]', s.el).onclick = (ev) => { smart = !smart; ev.currentTarget.classList.toggle('on', smart); K.toast(smart ? 'Smart: strokes teach the app the subject / background colours' : 'Smart off: strokes edit the mask directly', 2200); };
     K.$('[data-all]', s.el).onclick = () => { clearSeeds(); mk = K.seg.full(base.width, base.height); s.drew = true; paint(); };
     K.$('[data-x]', s.el).onclick = () => s.close();
     K.$('[data-ok]', s.el).onclick = async () => {
-      if (o.guide && !s.drew) { K.toast('Finding subject…', 900); await new Promise((r) => setTimeout(r, 30)); const m = (await K.seg.model(ph.src)) || K.seg.auto(ph.src); mk = K.canvas(base.width, base.height); K.ctx(mk).drawImage(m, 0, 0, mk.width, mk.height); }
+      if (o.guide && !s.drew) { K.toast('Finding subject…', 900); await new Promise((r) => setTimeout(r, 30)); const m = (await K.seg.model(ph.src)) || K.seg.autoArt(ph.src); mk = K.canvas(base.width, base.height); K.ctx(mk).drawImage(m, 0, 0, mk.width, mk.height); }
       const nv = Math.max(...ph.masks.keys(), 0) + 1; ph.masks.set(nv, mk); const loc = o.guide ? K.$('#gloc', s.el).value.trim() : null; mut((st) => { st.col.mv = nv; if (loc !== null) st.col.loc = loc; }); s.close(); if (o.guide) buildPanel();
       if (o.guide) { setStack(true); draw(); K.toast('Original on top, collage below · tap Stack to switch', 2600); }
     };

@@ -151,6 +151,88 @@
     x.save(); x.globalCompositeOperation = 'source-atop'; x.globalAlpha = 0.18; x.fillStyle = x.createPattern(noiseTile(), 'repeat'); x.fillRect(0, 0, c.width, c.height); x.restore(); // paper grain
     return c;
   };
+
+  /* ---------- Kapi Web (original) subject pipeline: auto mask + watercolour paintify ---------- */
+  const majority = (l, w, h) => { const o = new Uint8Array(l.length); for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { let n = 0; for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) { const xx = x + i, yy = y + j; if (xx >= 0 && yy >= 0 && xx < w && yy < h) n += l[yy * w + xx]; } o[y * w + x] = n >= 5 ? 1 : 0; } return o; };
+  const largestCC = (l, w, h) => { const id = new Int32Array(l.length), sz = [0]; let n = 0; const q = new Int32Array(l.length);
+    for (let s = 0; s < l.length; s++) { if (!l[s] || id[s]) continue; n++; let a = 0, t = 0; q[t++] = s; id[s] = n; while (a < t) { const p = q[a++], x = p % w, y = (p / w) | 0; [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dx, dy]) => { const xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= w || yy >= h) return; const k = yy * w + xx; if (l[k] && !id[k]) { id[k] = n; q[t++] = k; } }); } sz[n] = t; }
+    let best = 0, bi = 0; for (let i = 1; i <= n; i++) if (sz[i] > best) { best = sz[i]; bi = i; } const o = new Uint8Array(l.length); for (let i = 0; i < l.length; i++) if (id[i] === bi) o[i] = 1; return o; };
+  const fillHoles = (l, w, h) => { const out = new Uint8Array(w * h).fill(1), q = [];
+    for (let x = 0; x < w; x++) { q.push(x, (h - 1) * w + x); } for (let y = 0; y < h; y++) { q.push(y * w, y * w + w - 1); }
+    const seen = new Uint8Array(w * h); q.forEach((p) => { if (!l[p] && !seen[p]) seen[p] = 1; }); const stack = q.filter((p) => !l[p]);
+    while (stack.length) { const p = stack.pop(), x = p % w, y = (p / w) | 0; out[p] = 0; [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dx, dy]) => { const xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= w || yy >= h) return; const k = yy * w + xx; if (!l[k] && out[k] && !seen[k]) { seen[k] = 1; stack.push(k); } }); }
+    for (let i = 0; i < l.length; i++) if (l[i]) out[i] = 1; return out; };
+  const autoArt = (img) => {
+    const k = Math.min(1, 256 / Math.max(img.width, img.height)), w = Math.max(8, Math.round(img.width * k)), h = Math.max(8, Math.round(img.height * k));
+    const c0 = K.canvas(w, h), g = K.ctx(c0, 1); g.drawImage(img, 0, 0, w, h);
+    const d = g.getImageData(0, 0, w, h).data, N = w * h, cx = w / 2, cy = h * 0.52, rx = w * 0.47, ry = h * 0.47;
+    const rn = (i) => { const x = i % w, y = (i / w) | 0; return Math.sqrt(((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2); };
+    const isBorder = (i) => { const x = i % w, y = (i / w) | 0; return x < w * 0.05 || y < h * 0.05 || x > w * 0.95 || y > h * 0.95; };
+    let lab = new Uint8Array(N); for (let i = 0; i < N; i++) lab[i] = rn(i) < 0.62 ? 1 : 0;
+    const km = (idx) => { const pts = [], stp = Math.max(1, Math.floor(idx.length / 1200)); for (let i = 0; i < idx.length; i += stp) pts.push(idx[i]);
+      if (pts.length < 6) return [[128, 128, 128]]; const cen = []; for (let j = 0; j < 5; j++) { const p = pts[Math.floor((j * pts.length) / 5)]; cen.push([d[p * 4], d[p * 4 + 1], d[p * 4 + 2]]); }
+      for (let it = 0; it < 5; it++) { const sm = cen.map(() => [0, 0, 0, 0]); for (const p of pts) { let b = 0, bd = 1e9; for (let j = 0; j < cen.length; j++) { const dr = d[p * 4] - cen[j][0], dg = d[p * 4 + 1] - cen[j][1], db = d[p * 4 + 2] - cen[j][2], dd = dr * dr + dg * dg + db * db; if (dd < bd) { bd = dd; b = j; } } sm[b][0] += d[p * 4]; sm[b][1] += d[p * 4 + 1]; sm[b][2] += d[p * 4 + 2]; sm[b][3]++; }
+        for (let j = 0; j < cen.length; j++) if (sm[j][3]) cen[j] = [sm[j][0] / sm[j][3], sm[j][1] / sm[j][3], sm[j][2] / sm[j][3]]; }
+      return cen; };
+    const dist = (i, cen) => { let m = 1e9; for (const q of cen) { const dr = d[i * 4] - q[0], dg = d[i * 4 + 1] - q[1], db = d[i * 4 + 2] - q[2], dd = dr * dr + dg * dg + db * db; if (dd < m) m = dd; } return Math.sqrt(m); };
+    for (let it = 0; it < 4; it++) {
+      const fg = [], bg = []; for (let i = 0; i < N; i++) { if (isBorder(i) || rn(i) > 1.5) bg.push(i); else if (lab[i]) fg.push(i); else if (it > 0 && rn(i) > 1.05) bg.push(i); }
+      const Fc = km(fg), Bc = km(bg), nl = new Uint8Array(N);
+      for (let i = 0; i < N; i++) { const r = rn(i); if (r > 1.5 || isBorder(i)) { nl[i] = 0; continue; } nl[i] = dist(i, Bc) - dist(i, Fc) + (1 - r) * 48 > 0 ? 1 : 0; }
+      lab = majority(nl, w, h);
+    }
+    lab = largestCC(majority(majority(lab, w, h), w, h), w, h); lab = fillHoles(lab, w, h);
+    const sm = K.canvas(w, h), sg = K.ctx(sm, 1), im = sg.createImageData(w, h);
+    for (let i = 0; i < N; i++) { im.data[i * 4] = im.data[i * 4 + 1] = im.data[i * 4 + 2] = 255; im.data[i * 4 + 3] = lab[i] ? 255 : 0; } sg.putImageData(im, 0, 0);
+    const M = K.canvas(w * 2, h * 2), mg = K.ctx(M, 1); mg.imageSmoothingQuality = 'high'; mg.drawImage(sm, 0, 0, M.width, M.height);
+    const id2 = mg.getImageData(0, 0, M.width, M.height), a = id2.data; for (let i = 3; i < a.length; i += 4) a[i] = K.clamp((a[i] - 128) * 2 + 128, 0, 255); mg.putImageData(id2, 0, 0);
+    return smoothMask(M);
+  };
+  /* remove stair-steps from the 256px label grid: blur the alpha, then re-sharpen softly */
+  const smoothMask = (M) => {
+    const w = M.width, h = M.height, d = K.ctx(M, 1).getImageData(0, 0, w, h).data, a = new Float32Array(w * h); for (let i = 0; i < a.length; i++) a[i] = d[i * 4 + 3] / 255;
+    const b = K.seg.box(K.seg.box(a, w, h, 3), w, h, 3), out = K.canvas(w, h), x = K.ctx(out, 1), im = x.createImageData(w, h);
+    for (let i = 0; i < b.length; i++) { let t = (b[i] - 0.38) / 0.24; t = t < 0 ? 0 : t > 1 ? 1 : t; t = t * t * (3 - 2 * t); im.data[i * 4] = im.data[i * 4 + 1] = im.data[i * 4 + 2] = 255; im.data[i * 4 + 3] = t * 255; }
+    x.putImageData(im, 0, 0); return out;
+  };
+  K.seg.autoArt = autoArt;
+  /* same algorithm, restricted to a user box: run on the cropped region, paste back */
+  K.seg.autoRect = (src, r) => {
+    const pad = 0.03, x0 = Math.max(0, r.x0 - pad), y0 = Math.max(0, r.y0 - pad), x1 = Math.min(1, r.x1 + pad), y1 = Math.min(1, r.y1 + pad);
+    const cw = Math.max(16, Math.round((x1 - x0) * src.width)), ch = Math.max(16, Math.round((y1 - y0) * src.height)), crop = K.canvas(cw, ch);
+    K.ctx(crop).drawImage(src, x0 * src.width, y0 * src.height, cw, ch, 0, 0, cw, ch);
+    const m = autoArt(crop), L = 512, k = L / Math.max(src.width, src.height), out = K.canvas(Math.round(src.width * k), Math.round(src.height * k));
+    K.ctx(out).drawImage(m, x0 * out.width, y0 * out.height, (x1 - x0) * out.width, (y1 - y0) * out.height); return out;
+  };
+  K.maskBox = (M) => {
+    const w = M.width, h = M.height, a = K.ctx(M, 1).getImageData(0, 0, w, h).data; let x0 = w, y0 = h, x1 = 0, y1 = 0;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (a[(y * w + x) * 4 + 3] > 60) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    if (x1 <= x0 || y1 <= y0) { x0 = 0; y0 = 0; x1 = w - 1; y1 = h - 1; }
+    const pd = 6; x0 = Math.max(0, x0 - pd); y0 = Math.max(0, y0 - pd); x1 = Math.min(w - 1, x1 + pd); y1 = Math.min(h - 1, y1 + pd); return { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+  };
+  /* watercolour abstraction: kuwahara at <=420px, lifted/warmed, warm ink on strong edges */
+  K.paintify = (c) => {
+    const W = c.width, H = c.height, k = Math.min(1, 640 / Math.max(W, H)), w = Math.max(8, Math.round(W * k)), h = Math.max(8, Math.round(H * k));
+    const s = K.canvas(w, h), sg = K.ctx(s, 1); sg.drawImage(c, 0, 0, w, h);
+    const im = sg.getImageData(0, 0, w, h), d = im.data, W1 = w + 1, I = [0, 1, 2, 3, 4].map(() => new Float64Array(W1 * (h + 1)));
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = (y * w + x) * 4, r = d[i], g = d[i + 1], b = d[i + 2], l = 0.299 * r + 0.587 * g + 0.114 * b, v = [r, g, b, l, l * l], p = (y + 1) * W1 + x + 1; for (let c2 = 0; c2 < 5; c2++) I[c2][p] = v[c2] + I[c2][p - 1] + I[c2][p - W1] - I[c2][p - W1 - 1]; }
+    const box = (c2, x0, y0, x1, y1) => I[c2][(y1 + 1) * W1 + x1 + 1] - I[c2][y0 * W1 + x1 + 1] - I[c2][(y1 + 1) * W1 + x0] + I[c2][y0 * W1 + x0];
+    const R = 3, out = new Uint8ClampedArray(d.length), L = new Float32Array(w * h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      let bv = 1e18, bm = [0, 0, 0];
+      for (const [qx0, qy0, qx1, qy1] of [[x - R, y - R, x, y], [x, y - R, x + R, y], [x - R, y, x, y + R], [x, y, x + R, y + R]]) { const x0 = Math.max(0, qx0), y0 = Math.max(0, qy0), x1 = Math.min(w - 1, qx1), y1 = Math.min(h - 1, qy1), n = (x1 - x0 + 1) * (y1 - y0 + 1), ml = box(3, x0, y0, x1, y1) / n, vr = box(4, x0, y0, x1, y1) / n - ml * ml; if (vr < bv) { bv = vr; bm = [box(0, x0, y0, x1, y1) / n, box(1, x0, y0, x1, y1) / n, box(2, x0, y0, x1, y1) / n]; } }
+      const i = (y * w + x) * 4; let r = bm[0], g = bm[1], b = bm[2]; const l = 0.299 * r + 0.587 * g + 0.114 * b; r = l + (r - l) * 0.95; g = l + (g - l) * 0.95; b = l + (b - l) * 0.95;
+      out[i] = K.clamp((r - 128) * 0.82 + 128 + 34, 0, 255); out[i + 1] = K.clamp((g - 128) * 0.82 + 128 + 32, 0, 255); out[i + 2] = K.clamp((b - 128) * 0.82 + 128 + 28, 0, 255); out[i + 3] = d[i + 3]; L[y * w + x] = l;
+    }
+    for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) { const gx = L[y * w + x + 1] - L[y * w + x - 1], gy = L[(y + 1) * w + x] - L[(y - 1) * w + x], e = Math.min(1, Math.hypot(gx, gy) / 160) * 0.22, i = (y * w + x) * 4; out[i] = out[i] * (1 - e) + 120 * e; out[i + 1] = out[i + 1] * (1 - e) + 72 * e; out[i + 2] = out[i + 2] * (1 - e) + 52 * e; }
+    im.data.set(out); sg.putImageData(im, 0, 0);
+    { const h2 = K.canvas(Math.max(4, w >> 1), Math.max(4, h >> 1)), hx = K.ctx(h2); hx.imageSmoothingQuality = 'high'; hx.drawImage(s, 0, 0, h2.width, h2.height); sg.save(); sg.imageSmoothingQuality = 'high'; sg.globalAlpha = 0.85; sg.drawImage(h2, 0, 0, w, h); sg.restore(); } // soften square kuwahara patches into wash
+    const cg = K.ctx(c); cg.save(); cg.setTransform(1, 0, 0, 1, 0, 0); cg.clearRect(0, 0, W, H); cg.imageSmoothingQuality = 'high'; cg.drawImage(s, 0, 0, W, H); cg.restore();
+  };
+  /* paper texture exactly like the original: random grey tile with low alpha, multiplied */
+  const artTile = (() => { let t; return () => { if (t) return t; t = K.canvas(256, 256); const x = K.ctx(t, 1), id = x.createImageData(256, 256), r = K.rng(42); for (let i = 0; i < id.data.length; i += 4) { const v = r() * 255; id.data[i] = id.data[i + 1] = id.data[i + 2] = v; id.data[i + 3] = r() * 70; } x.putImageData(id, 0, 0); return t; }; })();
+  const brushBlob = (g, x1, y1, x2, y2, w, col) => { const dx = x2 - x1, dy = y2 - y1, L = Math.hypot(dx, dy) || 1, nx = -dy / L, ny = dx / L, mx = (x1 + x2) / 2, my = (y1 + y2) / 2; g.save(); g.fillStyle = col; g.beginPath(); g.moveTo(x1, y1); g.quadraticCurveTo(mx + nx * w, my + ny * w, x2, y2); g.quadraticCurveTo(mx - nx * w * 0.15, my - ny * w * 0.15, x1, y1); g.fill(); g.restore(); };
+
   /* ---------- drawing helpers ---------- */
   var noiseTile = (() => { let t; return () => { if (t) return t; t = K.canvas(256, 256); const x = K.ctx(t, 1), im = x.createImageData(256, 256), R = K.rng(11); for (let i = 0; i < im.data.length; i += 4) { const v = 128 + (R() - 0.5) * 70; im.data[i] = im.data[i + 1] = im.data[i + 2] = v; im.data[i + 3] = 255; } x.putImageData(im, 0, 0); return t; }; })();
   const paper = (ctx, W, H, E, base, o = {}) => {
@@ -194,26 +276,17 @@
   /* ---------- templates ---------- */
   K.COLLAGES = [
     { id: 'travel', name: 'Travel Collage', vars: 3, text: 'loc', ph: 'Where to?', draw(ctx, W, H, E) {
-      const v = E.v % 3, R = E.R;
-      paper(ctx, W, H, E, ['#f8f3e8', '#f3f1ea', '#f9efe6'][v], { noise: 0.9, blots: 0, soft: true, fibers: false });
-      const main = E.cell(0, 200, 260), pal = palette(main), sub = E.subject(Math.round(W * 0.7 * E.sc));
-      const asp = sub.canvas.width / sub.canvas.height, bw = W * (v === 1 ? 0.6 : 0.66), bh = H * 0.5, bx = v === 1 ? W * 0.34 : (W - bw) / 2, by = H * (v === 2 ? 0.17 : 0.2);
-      let w = bw, h = bw / asp; if (h > bh) { h = bh; w = bh * asp; }
-      const sx = bx + (bw - w) / 2, sy = by + (bh - h) / 2;
-      if (v === 1) { wash(ctx, sx + w * 0.5, sy + h * 0.55, w * 0.62, h * 0.55, pal[0], 0.16, R); wash(ctx, sx + w * 0.2, sy + h * 0.3, w * 0.3, h * 0.28, pal[1], 0.14, R); }
-      if (v === 2) shadow(ctx, E, 22, 10, 0.22, () => { ctx.fillStyle = '#fffdf8'; ctx.fill(tornPath(W * 0.07, H * 0.12, W * 0.86, H * 0.6, R, 10)); });
-      // soft grey brush shadow under the subject
-      wash(ctx, sx + w * 0.55, sy + h * 0.99, w * 0.42, Math.max(10, h * 0.045), '#8a8278', 0.1, R);
-      shadow(ctx, E, 7, 0, 0.3, () => ctx.drawImage(sub.canvas, sx, sy, w, h));
-      // short brush dabs radiating on both sides (like the reference)
-      const dab = pal[0].replace('rgb', 'rgba').replace(')', ',0.85)');
-      [[-0.18, 0.06, -28], [-0.2, 0.16, 0], [-0.17, 0.27, 24]].forEach(([fx, fy, a]) => rot(ctx, sx + w * (0.02 + fx), sy + h * (0.28 + fy), (a * Math.PI) / 180, () => stroke(ctx, -26, 0, 26, 0, 12, dab, R, 0.9)));
-      [[1.18, 0.0, 30], [1.2, 0.1, 0], [1.16, 0.2, -24]].forEach(([fx, fy, a]) => rot(ctx, sx + w * (fx - 0.1), sy + h * (0.22 + fy), (a * Math.PI) / 180, () => stroke(ctx, -26, 0, 26, 0, 12, dab, R, 0.9)));
-      // typewriter date + caption, lower-left
-      const tx = W * 0.12, ty = H * 0.78, col = '#b36f58', loc = (E.c.loc || '').toUpperCase();
-      if (v === 1) { if (E.c.loc) { text(ctx, E.c.loc, tx, ty + 8, 104, K.fonts.hand, '#6a4b3c', 'left', -0.03); squiggle(ctx, tx, ty + 34, 360, pal[0], 6); } text(ctx, E.dateDot, tx + 4, ty + 96, 36, K.fonts.type, col, 'left'); }
-      else { text(ctx, E.dateDot, tx, ty, 36, K.fonts.type, col, 'left'); if (loc) text(ctx, loc, tx, ty + 56, 36, K.fonts.type, col, 'left'); }
-      if (v === 2) { compass(ctx, W * 0.84, H * 0.86, 38, 'rgba(120,80,60,.7)'); dashed(ctx, [[W * 0.12, H * 0.92], [W * 0.35, H * 0.89], [W * 0.6, H * 0.935], [W * 0.78, H * 0.9]], 'rgba(120,90,70,.6)'); }
+      const v = E.v % 3, P = [{ paper: '#f4f0e7', acc: '#f3c24f', ink: '#b87a58' }, { paper: '#e8eef2', acc: '#86bfe8', ink: '#5d7f9a' }, { paper: '#f6e9e6', acc: '#f2a0b4', ink: '#a8625f' }][v], R = K.rng(15), s = E.sc;
+      ctx.fillStyle = P.paper; ctx.fillRect(0, 0, W, H); ctx.save(); ctx.globalCompositeOperation = 'multiply'; ctx.globalAlpha = 0.6; ctx.fillStyle = ctx.createPattern(artTile(), 'repeat'); ctx.fillRect(0, 0, W, H); ctx.restore();
+      ctx.save(); ctx.strokeStyle = 'rgba(120,100,80,.07)'; ctx.lineWidth = 2; for (let i = 0; i < 120; i++) { const x = R() * W, y = R() * H; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + (R() - 0.5) * 70, y + (R() - 0.5) * 30); ctx.stroke(); } ctx.restore();
+      const cy = H * 0.47, sub = E.subject(W * 0.72 * s, H * 0.5 * s), dw = sub.canvas.width / s, dh = sub.canvas.height / s;
+      ctx.save(); ctx.translate(W / 2 + dw * 0.12, cy + dh * 0.5 + 8); ctx.scale(1, 0.12); const sh = ctx.createRadialGradient(0, 0, 0, 0, 0, dw * 0.6); sh.addColorStop(0, 'rgba(95,85,75,.32)'); sh.addColorStop(1, 'rgba(95,85,75,0)'); ctx.fillStyle = sh; ctx.beginPath(); ctx.arc(0, 0, dw * 0.6, 0, 7); ctx.fill(); ctx.restore();
+      ctx.save(); ctx.translate(W / 2, cy); ctx.rotate(-0.04); ctx.drawImage(sub.canvas, -dw / 2, -dh / 2, dw, dh); ctx.restore();
+      const x0 = W / 2 - dw / 2, x1 = W / 2 + dw / 2, y0 = cy - dh / 2;
+      brushBlob(ctx, x0 - 30, y0 + dh * 0.18, x0 - 130, y0 + dh * 0.1, 18, P.acc); brushBlob(ctx, x0 - 20, y0 + dh * 0.3, x0 - 120, y0 + dh * 0.36, 14, P.acc);
+      brushBlob(ctx, x1 + 30, y0 + dh * 0.1, x1 + 120, y0 + dh * 0.02, 18, P.acc); brushBlob(ctx, x1 + 20, y0 + dh * 0.24, x1 + 115, y0 + dh * 0.3, 14, P.acc);
+      const fs = Math.max(30, W * 0.032), loc = (E.c.loc || 'SOMEWHERE LOVELY').toUpperCase();
+      text(ctx, E.dateDot, W * 0.1, H * 0.8 + fs * 0.35, fs, K.fonts.type, P.ink, 'left'); text(ctx, loc, W * 0.1, H * 0.8 + W * 0.05 + fs * 0.35, fs, K.fonts.type, P.ink, 'left');
     } },
     { id: 'holiday', name: 'Holiday Journal', vars: 3, text: 'title', ph: 'Holiday Journal', draw(ctx, W, H, E) {
       const v = E.v % 3, R = E.R, ink = ['#2f5fa8', '#c2455a', '#2e7d5b'][v]; gridPaper(ctx, W, H, E, ['#fbf8ee', '#fdf3ee', '#f3f8ee'][v], 'rgba(90,140,190,.22)');
