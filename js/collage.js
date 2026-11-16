@@ -166,15 +166,16 @@
   /* ---------- templates ---------- */
   K.COLLAGES = [
     { id: 'travel', name: 'Travel Collage', vars: 3, text: 'loc', ph: 'Where to?', draw(ctx, W, H, E) {
-      const v = E.v % 3, R = E.R; paper(ctx, W, H, E, '#f2ead8', { noise: 0.28 });
-      const main = E.cell(0, 200, 260), pal = palette(main), sub = E.subject(Math.round(W * 0.8 * E.sc)), box = [[90, H * 0.1, 900, H * 0.62], [250, H * 0.14, 760, H * 0.58], [40, H * 0.08, 1000, H * 0.66]][v];
+      const v = E.v % 3, R = E.R; paper(ctx, W, H, E, ['#f2ead8', '#e6edf0', '#f6e6e0'][v], { noise: 0.28 });
+      const main = E.cell(0, 200, 260), pal = palette(main), sub = E.subject(Math.round(W * 0.8 * E.sc)), box = [[90, H * 0.1, 900, H * 0.62], [W * 0.36, H * 0.1, W * 0.6, H * 0.62], [110, H * 0.13, 860, H * 0.58]][v];
       wash(ctx, box[0] + box[2] * 0.5, box[1] + box[3] * 0.62, box[2] * 0.55, box[3] * 0.4, pal[0], 0.22, R); wash(ctx, box[0] + box[2] * (v === 1 ? 0.3 : 0.7), box[1] + box[3] * 0.35, box[2] * 0.3, box[3] * 0.25, pal[1], 0.2, R); wash(ctx, W * 0.5, H * 0.8, W * 0.5, H * 0.1, pal[2], 0.15, R);
       ctx.save(); ctx.fillStyle = 'rgba(60,40,20,.18)'; ctx.filter = 'none'; ctx.beginPath(); ctx.ellipse(box[0] + box[2] / 2, box[1] + box[3] - 6, box[2] * 0.32, 18, 0, 0, TAU); ctx.fill(); ctx.restore();
+      if (v === 2) shadow(ctx, E, 26, 12, 0.3, () => { ctx.fillStyle = '#fffdf7'; ctx.fill(tornPath(60, H * 0.09, W - 120, H * 0.66, R, 12)); });
       let r; shadow(ctx, E, 24, 14, 0.3, () => { r = drawContain(ctx, sub.canvas, box[0], box[1], box[2], box[3]); });
       for (let i = 0; i < 4; i++) stroke(ctx, 60 + R() * 300, H * (0.62 + R() * 0.12), 260 + R() * 600, H * (0.62 + R() * 0.14) + R() * 40, 18 + R() * 22, pal[i % 3], R, 0.5);
       stroke(ctx, W * 0.1, H * 0.06, W * 0.45, H * 0.065, 20, pal[1], R, 0.55);
-      const ty = H * 0.8; text(ctx, E.c.loc || 'Somewhere nice', W / 2, ty, 120, K.fonts.hand, '#34304a', 'center', -0.02); squiggle(ctx, W * 0.3, ty + 24, W * 0.4, pal[0], 6);
-      text(ctx, E.date, W / 2, ty + 90, 38, K.fonts.type, '#5a4e3c', 'center'); compass(ctx, W * 0.86, H * 0.9, 44, '#34304a'); dashed(ctx, [[W * 0.12, H * 0.93], [W * 0.3, H * 0.9], [W * 0.5, H * 0.945], [W * 0.68, H * 0.9]], '#8a7a62'); plane(ctx, W * 0.7, H * 0.895, 0.9, '#34304a', -0.5);
+      const ty = H * 0.8, lf = v === 1; text(ctx, E.c.loc || 'Somewhere nice', lf ? 70 : W / 2, lf ? H * 0.46 : ty, lf ? 130 : 120, K.fonts.hand, '#34304a', lf ? 'left' : 'center', lf ? -0.12 : -0.02); if (lf) squiggle(ctx, 70, H * 0.46 + 36, 300, pal[0], 6); else squiggle(ctx, W * 0.3, ty + 24, W * 0.4, pal[0], 6);
+      text(ctx, E.date, lf ? 76 : W / 2, lf ? H * 0.46 + 96 : ty + 90, 38, K.fonts.type, '#5a4e3c', lf ? 'left' : 'center'); compass(ctx, W * 0.86, H * 0.9, 44, '#34304a'); dashed(ctx, [[W * 0.12, H * 0.93], [W * 0.3, H * 0.9], [W * 0.5, H * 0.945], [W * 0.68, H * 0.9]], '#8a7a62'); plane(ctx, W * 0.7, H * 0.895, 0.9, '#34304a', -0.5);
     } },
     { id: 'holiday', name: 'Holiday Journal', vars: 3, text: 'title', ph: 'Holiday Journal', draw(ctx, W, H, E) {
       const v = E.v % 3, R = E.R, ink = ['#2f5fa8', '#c2455a', '#2e7d5b'][v]; gridPaper(ctx, W, H, E, ['#fbf8ee', '#fdf3ee', '#f3f8ee'][v], 'rgba(90,140,190,.22)');
@@ -214,9 +215,9 @@
     { id: 'mini', name: 'Miniature World', vars: 3, text: 'loc', ph: 'Tiny town', draw(ctx, W, H, E) {
       const v = E.v % 3, R = E.R, g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, ['#cfe8ff', '#ffe3cf', '#dff5d8'][v]); g.addColorStop(1, '#fff'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
       const pw = W * 0.84, ph = H * 0.56, px = W * 0.08, py = H * 0.1, cell = E.cell(0, pw, ph), cw = cell.width, ch = cell.height;
-      const bl = K.canvas(cw, ch), bx = K.ctx(bl); bx.imageSmoothingQuality = 'high'; const sm = K.canvas(Math.max(6, cw / 14), Math.max(6, ch / 14)); K.ctx(sm).drawImage(cell, 0, 0, sm.width, sm.height); bx.drawImage(sm, 0, 0, cw, ch);
+      const bl = K.canvas(cw, ch), bx = K.ctx(bl); bx.imageSmoothingQuality = 'high'; const sm = K.canvas(Math.max(6, cw / 6), Math.max(6, ch / 6)); K.ctx(sm).drawImage(cell, 0, 0, sm.width, sm.height); bx.drawImage(sm, 0, 0, cw, ch);
       const sharp = K.canvas(cw, ch), sx = K.ctx(sharp); sx.drawImage(cell, 0, 0); sx.globalCompositeOperation = 'destination-in';
-      if (v === 2) { const rg = sx.createRadialGradient(cw / 2, ch / 2, ch * 0.12, cw / 2, ch / 2, ch * 0.5); rg.addColorStop(0, '#000'); rg.addColorStop(1, 'rgba(0,0,0,0)'); sx.fillStyle = rg; } else { const lg = v === 0 ? sx.createLinearGradient(0, 0, 0, ch) : sx.createLinearGradient(0, 0, cw, ch); [[0, 0], [0.3, 0], [0.42, 1], [0.6, 1], [0.72, 0], [1, 0]].forEach(([o, a]) => lg.addColorStop(o, `rgba(0,0,0,${a})`)); sx.fillStyle = lg; } sx.fillRect(0, 0, cw, ch);
+      if (v === 2) { const rg = sx.createRadialGradient(cw / 2, ch / 2, ch * 0.12, cw / 2, ch / 2, ch * 0.5); rg.addColorStop(0, '#000'); rg.addColorStop(1, 'rgba(0,0,0,0)'); sx.fillStyle = rg; } else { const lg = v === 0 ? sx.createLinearGradient(0, 0, 0, ch) : sx.createLinearGradient(0, 0, cw, ch); [[0, 0], [0.18, 0], [0.34, 1], [0.7, 1], [0.86, 0], [1, 0]].forEach(([o, a]) => lg.addColorStop(o, `rgba(0,0,0,${a})`)); sx.fillStyle = lg; } sx.fillRect(0, 0, cw, ch);
       bx.drawImage(sharp, 0, 0); K.filterCanvas(bl, Object.assign({}, K.preset('none'), { id: 'tilt', c: 1.15, s: 1.55, b: 0.02, vig: 0.1 }), { seed: 2 });
       shadow(ctx, E, 40, 30, 0.35, () => { ctx.fillStyle = '#e9dcc4'; rrect(ctx, px - 10, py + ph - 10, pw + 20, 76, 14); ctx.fill(); });
       ctx.fillStyle = '#d8c7a6'; rrect(ctx, px - 10, py + ph + 40, pw + 20, 30, 12); ctx.fill();
@@ -239,7 +240,7 @@
       else if (v === 1) { const bh = gh * 0.58; cells.push([m, top, gw, bh]); const cw = (gw - gap) / 2, chh = gh - bh - gap; cells.push([m, top + bh + gap, cw, chh], [m + cw + gap, top + bh + gap, cw, chh]); }
       else { const cw = (gw - gap * 2) / 3, chh = (gh - gap * 2) / 3; for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) cells.push([m + c * (cw + gap), top + r * (chh + gap), cw, chh]); }
       cells.forEach(([x, y, w, h], i) => { shadow(ctx, E, 10, 4, v === 2 ? 0 : 0.22, () => { ctx.save(); rrect(ctx, x, y, w, h, 18); ctx.clip(); ctx.drawImage(E.cell(i, w, h), x, y, w, h); ctx.restore(); }); });
-      text(ctx, E.date, m, H - 70, 38, K.fonts.type, v === 2 ? '#ddd' : '#555'); text(ctx, 'kapi · ' + cells.length + ' moments', W - m, H - 70, 52, K.fonts.hand, v === 1 ? '#c2455a' : v === 2 ? '#ffe926' : '#555', 'right');
+      text(ctx, E.date, m, H - 70, 38, K.fonts.type, v === 2 ? '#ddd' : '#555'); text(ctx, 'kapi · ' + cells.length + ' moments', W / 2, H - 100, 52, K.fonts.hand, v === 1 ? '#c2455a' : v === 2 ? '#ffe926' : '#555', 'center');
     } },
     { id: 'pile', name: 'Polaroid Pile', vars: 3, text: 'title', ph: 'good times', draw(ctx, W, H, E) {
       const v = E.v % 3, R = E.R;
