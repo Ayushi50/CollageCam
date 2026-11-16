@@ -23,7 +23,7 @@
     const paint = () => { const px = cv.width * pos; x.drawImage(src, 0, 0, cv.width, cv.height); x.save(); x.beginPath(); x.rect(px, 0, cv.width - px, cv.height); x.clip(); x.drawImage(fl, 0, 0, cv.width, cv.height); x.restore(); x.fillStyle = '#ffe926'; x.fillRect(px - 2, 0, 4, cv.height); x.beginPath(); x.arc(px, cv.height / 2, 20, 0, 7); x.fill(); x.fillStyle = '#111'; x.font = '700 18px Inter'; x.textAlign = 'center'; x.fillText('◂▸', px, cv.height / 2 + 6); x.fillStyle = 'rgba(0,0,0,.6)'; x.fillRect(8, 8, 62, 24); x.fillRect(cv.width - 70, 8, 62, 24); x.fillStyle = '#fff'; x.font = '600 13px Inter'; x.fillText('BEFORE', 39, 25); x.fillText('AFTER', cv.width - 39, 25); };
     const mv = (e) => { const r = cv.getBoundingClientRect(); pos = K.clamp((e.clientX - r.left) / r.width, 0.03, 0.97); paint(); }; let d = false;
     cv.addEventListener('pointerdown', (e) => { d = true; cv.setPointerCapture(e.pointerId); mv(e); }); cv.addEventListener('pointermove', (e) => d && mv(e)); ['pointerup', 'pointercancel'].forEach((n) => cv.addEventListener(n, () => (d = false)));
-    paint(); return cv;
+    paint(); if (document.fonts && document.fonts.ready) document.fonts.ready.then(paint); setTimeout(paint, 400); return cv;
   };
 
   /* ---------- onboarding ---------- */
