@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#0b0b0d">
+<title>Kapi Web</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Caveat:wght@500;700&family=Special+Elite&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+
+  <section id="splash" class="screen on"><div class="logo">KAPI<span>web</span></div><p class="mut">retro camera &amp; collage studio</p></section>
+
+  <section id="perm" class="screen center">
+    <div class="permic">◉</div><h2>Let Kapi see the world</h2>
+    <p class="mut">Kapi uses your camera for the live viewfinder and your microphone only when you record video. Nothing is uploaded — everything stays on this device.</p>
+    <button class="btn pri block" id="perm-allow">Allow camera</button><button class="btn ghost block" id="perm-skip">Not now</button>
+  </section>
+
+  <section id="intro" class="screen">
+    <button class="btn ghost skip" id="intro-skip">Skip</button>
+    <div class="slides"><div id="intro-slides"></div></div>
+    <div class="dots" id="intro-dots"></div><button class="btn pri block foot" id="intro-next">Next</button>
+  </section>
+
+  <!-- CAMERA -->
+  <section id="cam" class="screen">
+    <div class="topbar cam-top">
+      <button class="ib sq" id="c-flash" title="Flash">⚡</button>
+      <button class="ib sq" id="c-timer" title="Timer">⏱<span>Off</span></button>
+      <button class="ib sq" id="c-grid" title="Grid">▦</button>
+      <button class="ib sq" id="c-ratio" title="Aspect"><span>3:4</span></button>
+      <button class="ib sq" id="c-lens" title="Fisheye lens">◎</button>
+      <button class="ib sq" id="c-date" title="Date stamp">📅</button>
+      <button class="ib sq" id="c-set" title="Settings">⚙</button>
+    </div>
+    <div class="viewwrap">
+      <div id="cam-view">
+        <video id="cam-video" playsinline muted autoplay></video>
+        <canvas id="cam-cv" width="400" height="533"></canvas>
+        <div id="cam-grid"></div><div id="cam-flash"></div><div id="cam-count"></div><div id="cam-rectime"></div>
+        <div id="c-zoom"><button data-z="1" class="on">1x</button><button data-z="1.6">1.6x</button></div>
+        <button class="chip hold" id="c-cmp">hold: original</button>
+        <div id="cam-denied"><div><div class="permic">◉</div><p></p>
+          <label class="btn pri block">Use device camera<input type="file" id="cam-file" accept="image/*" capture="environment" hidden></label>
+          <button class="btn block" id="cam-import">Import from library</button><button class="btn ghost block" id="cam-retry">Try camera again</button></div></div>
+      </div>
+    </div>
+    <div class="camdock">
+      <div id="c-man" class="manual"></div>
+      <div class="row sp pad2"><button class="chip" id="c-manual">⚙ Manual</button><button class="chip acc" id="c-ai">✦ AI pick</button></div>
+      <div id="cam-filters"></div>
+      <div id="c-modes" class="modes"><button data-m="photo" class="on">PHOTO</button><button data-m="video">VIDEO</button><button data-m="live">LIVE</button></div>
+      <div class="shutrow">
+        <button id="cam-gal" class="galbtn" aria-label="Gallery"><span>▦</span></button>
+        <button id="cam-shutter" class="shutter photo" aria-label="Shutter"><i></i></button>
+        <button id="cam-flip" class="ib flip" aria-label="Flip camera">⟲</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- EDITOR -->
+  <section id="ed" class="screen">
+    <div class="topbar">
+      <button class="ib" id="ed-back" aria-label="Back">‹</button>
+      <div class="row gap"><button class="ib" id="ed-undo" aria-label="Undo" disabled>↶</button><button class="ib" id="ed-redo" aria-label="Redo" disabled>↷</button></div>
+      <button class="ib ok" id="ed-ok" aria-label="Done">✓</button>
+    </div>
+    <div class="stagewrap"><canvas id="ed-stage" width="720" height="960"></canvas>
+      <button class="chip hold" id="ed-hold">hold: compare</button><button class="chip cmpb" id="ed-cmpbtn">◨ Slide</button></div>
+    <div id="ed-crop" class="croprow"><button data-r="9:16">9:16</button><button data-r="3:4">3:4</button><button data-r="4:5">4:5</button><button data-r="1:1">1:1</button><button data-r="orig">Free</button><span class="sp"></span><button id="ed-rot" aria-label="Rotate">⟳</button><button id="ed-flip" aria-label="Mirror">⇋</button><button id="ed-reset" aria-label="Reset zoom">⤢</button></div>
+    <div id="ed-strip" class="strip"></div>
+    <div id="ed-panel" class="panel"></div>
+    <div id="ed-tabs" class="tabs"></div>
+  </section>
+
+  <!-- GALLERY -->
+  <section id="gal" class="screen">
+    <div class="topbar">
+      <button class="ib" id="gal-back" style="display:none">‹</button><h1 id="gal-title">Gallery</h1>
+      <div class="row gap"><button class="chip" id="gal-sel">Select</button><button class="ib" id="gal-imp" title="Import">＋</button><button class="ib" id="gal-set" title="Settings">⚙</button></div>
+    </div>
+    <div class="seg" id="gal-tabs"><button data-t="recent" class="on">Recent</button><button data-t="albums">Albums</button></div>
+    <div id="gal-body" class="galbody"></div>
+    <div id="gal-bar" class="selbar"><span id="gal-count">0 selected</span><span class="row gap"><button class="chip" id="b-restore">Restore</button><button class="chip" id="b-fav">♡ Favourite</button><button class="chip" id="b-move">▤ Album</button><button class="chip danger" id="b-del">🗑 Delete</button></span></div>
+    <button class="fab" onclick="K.go('cam')" aria-label="Camera">◉</button>
+  </section>
+
+  <!-- SETTINGS -->
+  <section id="set" class="screen">
+    <div class="topbar"><button class="ib" id="set-back">‹</button><h1>Settings</h1><span style="width:44px"></span></div>
+    <div id="set-body" class="galbody"></div>
+  </section>
+
+  <div id="overlays"></div><div id="toast"></div>
+  <input type="file" id="imp-file" accept="image/*,video/*" multiple hidden>
+</div>
+<script src="js/core.js"></script>
+<script src="js/filters.js"></script>
+<script src="js/effects.js"></script>
+<script src="js/collage.js"></script>
+<script src="js/render.js"></script>
+<script src="js/editor.js"></script>
+<script src="js/camera.js"></script>
+<script src="js/gallery.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
