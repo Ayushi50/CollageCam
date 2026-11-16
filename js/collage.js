@@ -6,46 +6,46 @@
   /* ---------- segmentation ---------- */
   K.seg = {
     L: 192,
-    auto(src) {
-      const sc = this.L / Math.max(src.width, src.height), w = Math.max(8, Math.round(src.width * sc)), h = Math.max(8, Math.round(src.height * sc));
-      const t = K.canvas(w, h), tc = K.ctx(t, 1); tc.drawImage(src, 0, 0, w, h); const d = tc.getImageData(0, 0, w, h).data, n = w * h;
-      // background samples from border ring → 3 centres (k-means)
-      const ring = Math.max(2, Math.round(Math.min(w, h) * 0.07)), pts = [];
-      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (y < ring || ((x < ring || x >= w - ring) && y < h * 0.65)) { const i = (y * w + x) * 4; pts.push([d[i], d[i + 1], d[i + 2]]); }
-      let cs = [pts[0], pts[(pts.length / 3) | 0], pts[((pts.length * 2) / 3) | 0]].map((p) => p.slice());
-      const asg = new Int8Array(pts.length), sig = [30, 30, 30];
-      for (let it = 0; it < 6; it++) {
-        const sum = cs.map(() => [0, 0, 0, 0]);
-        pts.forEach((p, i) => { let bi = 0, bd = 1e9; cs.forEach((c, j) => { const dd = (p[0] - c[0]) ** 2 + (p[1] - c[1]) ** 2 + (p[2] - c[2]) ** 2; if (dd < bd) { bd = dd; bi = j; } }); asg[i] = bi; const s = sum[bi]; s[0] += p[0]; s[1] += p[1]; s[2] += p[2]; s[3]++; });
-        sum.forEach((s, j) => { if (s[3]) cs[j] = [s[0] / s[3], s[1] / s[3], s[2] / s[3]]; });
+    tune: { cy: 0.58, rx: 0.46, ry: 0.62, k: 0.9, o: 0.6 },
+    /* GrabCut-style segmentation: colour models for fg/bg (k-means), edge-aware diffusion of the evidence, iterated */
+    auto(src, rect) {
+      const sc = this.L / Math.max(src.width, src.height), w = Math.max(8, Math.round(src.width * sc)), h = Math.max(8, Math.round(src.height * sc)), N = w * h;
+      const t = K.canvas(w, h), tc = K.ctx(t, 1); tc.drawImage(src, 0, 0, w, h); const d = tc.getImageData(0, 0, w, h).data;
+      const ring = Math.max(2, Math.round(Math.min(w, h) * 0.06)), TU = rect ? { cy: (rect.y0 + rect.y1) / 2, rx: (rect.x1 - rect.x0) * 0.625, ry: (rect.y1 - rect.y0) * 0.625, k: this.rectK == null ? 0.7 : this.rectK, o: 0.85 } : this.tune, cxp = rect ? ((rect.x0 + rect.x1) / 2) * w : w / 2, cyp = h * TU.cy;
+      const nd = (i) => { const x = i % w, y = (i / w) | 0; return Math.hypot((x - cxp) / (w * TU.rx), (y - cyp) / (h * TU.ry)); }; // 0 centre → ~1.4 corner
+      const isRing = (i) => { const x = i % w, y = (i / w) | 0; if (rect) { const px = 0.03; return x / w < rect.x0 - px || x / w > rect.x1 + px || y / h < rect.y0 - px || y / h > rect.y1 + px; } return y < ring || ((x < ring || x >= w - ring) && y < h * 0.7); };
+      let lab = new Uint8Array(N); for (let i = 0; i < N; i++) lab[i] = nd(i) < 0.55 ? 1 : 0;
+      const sig = (cs, idx) => { const v = cs.map(() => [0, 0]); idx.forEach((p) => { let b = 0, bd = 1e9; cs.forEach((c, j) => { const dd = (d[p * 4] - c[0]) ** 2 + (d[p * 4 + 1] - c[1]) ** 2 + (d[p * 4 + 2] - c[2]) ** 2; if (dd < bd) { bd = dd; b = j; } }); v[b][0] += bd; v[b][1]++; }); return v.map((x) => Math.sqrt(x[0] / Math.max(1, x[1]) / 3) + 12); };
+      const dist = (i, cs, sg) => { let m = 1e9; for (let j = 0; j < cs.length; j++) { const c = cs[j], dd = Math.sqrt(((d[i * 4] - c[0]) ** 2 + (d[i * 4 + 1] - c[1]) ** 2 + (d[i * 4 + 2] - c[2]) ** 2) / 3) / sg[j]; if (dd < m) m = dd; } return m; };
+      // neighbour weights (edge aware)
+      const wR = new Float32Array(N), wD = new Float32Array(N), sg2 = 28 * 28;
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = y * w + x, p = i * 4; if (x < w - 1) { const q = p + 4; wR[i] = Math.exp(-(((d[p] - d[q]) ** 2 + (d[p + 1] - d[q + 1]) ** 2 + (d[p + 2] - d[q + 2]) ** 2) / 3) / sg2); } if (y < h - 1) { const q = p + w * 4; wD[i] = Math.exp(-(((d[p] - d[q]) ** 2 + (d[p + 1] - d[q + 1]) ** 2 + (d[p + 2] - d[q + 2]) ** 2) / 3) / sg2); } }
+      let score = new Float32Array(N);
+      for (let it = 0; it < 5; it++) {
+        const fg = [], bg = []; for (let i = 0; i < N; i++) { if (isRing(i) || nd(i) > 1.25) bg.push(i); else if (lab[i] && (it > 0 || nd(i) < 0.4)) fg.push(i); else if (!lab[i] && it > 0) bg.push(i); }
+        if (fg.length < 60 || bg.length < 60) break;
+        const F = this.km(d, fg, 5), B = this.km(d, bg, 5), sF = sig(F, fg), sB = sig(B, bg);
+        for (let i = 0; i < N; i++) { const prior = TU.k * (TU.o - nd(i)); score[i] = (dist(i, B, sB) - dist(i, F, sF)) * 1.2 + prior; if (isRing(i)) score[i] = Math.min(score[i], -3); if (nd(i) < 0.18) score[i] = Math.max(score[i], 3); }
+        // edge-aware diffusion
+        for (let k = 0; k < 10; k++) { const nx = new Float32Array(N); for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = y * w + x; let s = score[i] * 1.0, ws = 1; if (x < w - 1) { s += score[i + 1] * wR[i]; ws += wR[i]; } if (x > 0) { s += score[i - 1] * wR[i - 1]; ws += wR[i - 1]; } if (y < h - 1) { s += score[i + w] * wD[i]; ws += wD[i]; } if (y > 0) { s += score[i - w] * wD[i - w]; ws += wD[i - w]; } nx[i] = s / ws; } score = nx; }
+        for (let i = 0; i < N; i++) lab[i] = score[i] > 0 ? 1 : 0;
       }
-      const vs = cs.map(() => [0, 0]); pts.forEach((p, i) => { const c = cs[asg[i]]; vs[asg[i]][0] += (p[0] - c[0]) ** 2 + (p[1] - c[1]) ** 2 + (p[2] - c[2]) ** 2; vs[asg[i]][1]++; });
-      vs.forEach((v, j) => (sig[j] = Math.sqrt(v[0] / Math.max(1, v[1]) / 3) + 14));
-      const score = new Float32Array(n); let hist = new Float32Array(64), mx = 0;
-      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-        const i = y * w + x, p = i * 4; let best = 1e9; cs.forEach((c, j) => { const dd = Math.sqrt(((d[p] - c[0]) ** 2 + (d[p + 1] - c[1]) ** 2 + (d[p + 2] - c[2]) ** 2) / 3) / sig[j]; if (dd < best) best = dd; });
-        const nd = Math.hypot((x / w - 0.5) * 2, (y / h - 0.5) * 2) / 1.41; best *= 1.7 - 1.35 * nd; score[i] = best; hist[Math.min(63, (best * 8) | 0)]++;
-      }
-      // Otsu
-      let tot = n, sumAll = 0; for (let i = 0; i < 64; i++) sumAll += i * hist[i]; let wB = 0, sB = 0, bestV = -1, th = 8;
-      for (let i = 0; i < 64; i++) { wB += hist[i]; if (!wB) continue; const wF = tot - wB; if (!wF) break; sB += i * hist[i]; const mB = sB / wB, mF = (sumAll - sB) / wF, v = wB * wF * (mB - mF) ** 2; if (v > bestV) { bestV = v; th = i; } }
-      const thr = Math.max(1.0, Math.min((th + 1) / 8, 2.2));
-      let m = new Float32Array(n); for (let i = 0; i < n; i++) m[i] = score[i] > thr ? 1 : 0;
-      m = this.box(this.box(m, w, h, 2), w, h, 2); for (let i = 0; i < n; i++) m[i] = m[i] > 0.5 ? 1 : 0;
-      // largest component near centre
-      const lab = new Int32Array(n), comp = []; let nl = 0;
-      for (let s = 0; s < n; s++) if (m[s] && !lab[s]) { nl++; let cnt = 0, sx = 0, sy = 0; const st = [s]; lab[s] = nl; while (st.length) { const q = st.pop(), qx = q % w, qy = (q / w) | 0; cnt++; sx += qx; sy += qy; [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dx, dy]) => { const nx = qx + dx, ny = qy + dy; if (nx >= 0 && ny >= 0 && nx < w && ny < h) { const ni = ny * w + nx; if (m[ni] && !lab[ni]) { lab[ni] = nl; st.push(ni); } } }); } comp[nl] = { cnt, cx: sx / cnt / w, cy: sy / cnt / h }; }
-      let pick = 0, pv = 0; comp.forEach((c, i) => { if (!c) return; const v = c.cnt * (1.2 - Math.hypot(c.cx - 0.5, c.cy - 0.5)); if (v > pv) { pv = v; pick = i; } });
-      for (let i = 0; i < n; i++) m[i] = lab[i] === pick && pick ? 1 : 0;
-      // fill holes
-      const bgm = new Uint8Array(n), st2 = []; for (let x = 0; x < w; x++) { st2.push(x, (h - 1) * w + x); } for (let y = 0; y < h; y++) { st2.push(y * w, y * w + w - 1); }
-      st2.forEach((i) => { if (!m[i]) bgm[i] = 1; }); const stack = st2.filter((i) => bgm[i]);
-      while (stack.length) { const q = stack.pop(), qx = q % w, qy = (q / w) | 0; [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dx, dy]) => { const nx = qx + dx, ny = qy + dy; if (nx >= 0 && ny >= 0 && nx < w && ny < h) { const ni = ny * w + nx; if (!m[ni] && !bgm[ni]) { bgm[ni] = 1; stack.push(ni); } } }); }
-      let area = 0; for (let i = 0; i < n; i++) { if (!bgm[i]) { m[i] = 1; area++; } else m[i] = 0; }
-      const cov = area / n; if (cov < 0.04 || cov > 0.9) return this.ellipse(w, h);
-      m = this.box(m, w, h, 1); const coarse = this.toCanvas(m, w, h); try { return this.refine(src, coarse); } catch (e) { return coarse; }
+      // keep the component that holds the centre, fill holes, smooth
+      const labC = new Int32Array(N), comp = []; let nl = 0;
+      for (let s = 0; s < N; s++) if (lab[s] && !labC[s]) { nl++; let cnt = 0, mind = 9; const st = [s]; labC[s] = nl; while (st.length) { const q = st.pop(), qx = q % w, qy = (q / w) | 0; cnt++; mind = Math.min(mind, nd(q)); [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dx, dy]) => { const nx = qx + dx, ny = qy + dy; if (nx >= 0 && ny >= 0 && nx < w && ny < h) { const ni = ny * w + nx; if (lab[ni] && !labC[ni]) { labC[ni] = nl; st.push(ni); } } }); } comp[nl] = { cnt, mind }; }
+      let pick = 0, pv = -1; comp.forEach((c, i) => { if (!c) return; const v = c.cnt * (1.6 - Math.min(1.4, c.mind)); if (v > pv) { pv = v; pick = i; } });
+      let m = new Float32Array(N); for (let i = 0; i < N; i++) m[i] = labC[i] === pick && pick ? 1 : 0;
+      const bgm = new Uint8Array(N), stk = []; for (let x = 0; x < w; x++) { stk.push(x, (h - 1) * w + x); } for (let y = 0; y < h; y++) { stk.push(y * w, y * w + w - 1); }
+      const seeds = stk.filter((i) => !m[i]); seeds.forEach((i) => (bgm[i] = 1));
+      while (seeds.length) { const q = seeds.pop(), qx = q % w, qy = (q / w) | 0; [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dx, dy]) => { const nx = qx + dx, ny = qy + dy; if (nx >= 0 && ny >= 0 && nx < w && ny < h) { const ni = ny * w + nx; if (!m[ni] && !bgm[ni]) { bgm[ni] = 1; seeds.push(ni); } } }); }
+      let area = 0; for (let i = 0; i < N; i++) { m[i] = bgm[i] ? 0 : 1; if (m[i]) area++; }
+      const cov = area / N; if (cov < 0.04 || cov > 0.92) return this.ellipse(w, h);
+      const thr = (a, t) => { for (let i = 0; i < N; i++) a[i] = a[i] > t ? 1 : 0; return a; };
+      m = thr(this.box(m, w, h, 5), 0.22); m = thr(this.box(m, w, h, 5), 0.78); // closing: fill dark gaps / notches
+      m = thr(this.box(m, w, h, 3), 0.8); m = thr(this.box(m, w, h, 3), 0.2); // opening: drop thin spurs and fragments
+      m = this.box(m, w, h, 1);
+      const coarse = this.toCanvas(m, w, h); try { return this.refine(src, coarse); } catch (e) { return coarse; }
     },
-
     km(d, idx, k) { // small k-means on RGB samples
       const pts = [], stp = Math.max(1, Math.floor(idx.length / 700)); for (let i = 0; i < idx.length; i += stp) pts.push(idx[i]);
       const cen = []; for (let j = 0; j < k; j++) { const p = pts[Math.floor((j * pts.length) / k)]; cen.push([d[p * 4], d[p * 4 + 1], d[p * 4 + 2]]); }
@@ -63,7 +63,7 @@
       const F = this.km(d, fg, 3), B = this.km(d, bg, 3), out = new Float32Array(N);
       const dist = (i, cs) => { let best = 1e9; for (const c of cs) { const dd = (d[i * 4] - c[0]) ** 2 + (d[i * 4 + 1] - c[1]) ** 2 + (d[i * 4 + 2] - c[2]) ** 2; if (dd < best) best = dd; } return Math.sqrt(best); };
       for (let i = 0; i < N; i++) { if (sm[i] > 0.98) out[i] = 1; else if (sm[i] < 0.02) out[i] = 0; else out[i] = 1 / (1 + Math.exp(-((dist(i, B) - dist(i, F)) / 14 + (sm[i] - 0.5) * 5))); }
-      let r = this.box(out, w, h, 2); for (let i = 0; i < N; i++) r[i] = r[i] > 0.5 ? 1 : 0; r = this.box(r, w, h, 1);
+      let r = this.box(out, w, h, 4); for (let i = 0; i < N; i++) r[i] = r[i] > 0.5 ? 1 : 0; r = this.box(r, w, h, 2);
       return this.toCanvas(r, w, h);
     },
     ellipse(w, h) { const c = K.canvas(w, h), x = K.ctx(c); x.fillStyle = '#fff'; x.beginPath(); x.ellipse(w / 2, h / 2, w * 0.38, h * 0.42, 0, 0, TAU); x.fill(); return c; },
@@ -117,10 +117,10 @@
   };
   K.paintCanvas = (c) => {
     const orig = K.canvas(c.width, c.height); K.ctx(orig).drawImage(c, 0, 0);
-    const r = Math.max(2, Math.round(c.width / 150)); K.kuwahara(c, r);
-    const x = K.ctx(c); x.save(); x.globalCompositeOperation = 'source-atop'; x.globalAlpha = 0.32; x.drawImage(orig, 0, 0); // keep fine detail
-    x.globalAlpha = 0.14; x.fillStyle = '#fff6e0'; x.fillRect(0, 0, c.width, c.height); x.restore();
-    inkEdges(c, 0.5);
+    const r = Math.max(3, Math.round(c.width / 62)); K.kuwahara(c, r);
+    const x = K.ctx(c); x.save(); x.globalCompositeOperation = 'source-atop'; x.globalAlpha = 0.2; x.drawImage(orig, 0, 0); // keep a little fine detail
+    x.globalAlpha = 0.2; x.fillStyle = '#fff6e0'; x.fillRect(0, 0, c.width, c.height); x.restore();
+    inkEdges(c, 0.2);
     x.save(); x.globalCompositeOperation = 'source-atop'; x.globalAlpha = 0.18; x.fillStyle = x.createPattern(noiseTile(), 'repeat'); x.fillRect(0, 0, c.width, c.height); x.restore(); // paper grain
     return c;
   };
@@ -128,7 +128,7 @@
   var noiseTile = (() => { let t; return () => { if (t) return t; t = K.canvas(256, 256); const x = K.ctx(t, 1), im = x.createImageData(256, 256), R = K.rng(11); for (let i = 0; i < im.data.length; i += 4) { const v = 128 + (R() - 0.5) * 70; im.data[i] = im.data[i + 1] = im.data[i + 2] = v; im.data[i + 3] = 255; } x.putImageData(im, 0, 0); return t; }; })();
   const paper = (ctx, W, H, E, base, o = {}) => {
     ctx.fillStyle = base; ctx.fillRect(0, 0, W, H);
-    const R = K.rng(E.seed + 1); ctx.save(); ctx.globalCompositeOperation = 'multiply'; ctx.globalAlpha = o.noise == null ? 0.22 : o.noise; ctx.fillStyle = ctx.createPattern(noiseTile(), 'repeat'); ctx.fillRect(0, 0, W, H); ctx.restore();
+    const R = K.rng(E.seed + 1); ctx.save(); ctx.globalCompositeOperation = o.soft ? 'soft-light' : 'multiply'; ctx.globalAlpha = o.noise == null ? 0.22 : o.noise; ctx.fillStyle = ctx.createPattern(noiseTile(), 'repeat'); ctx.fillRect(0, 0, W, H); ctx.restore();
     ctx.save(); for (let i = 0; i < (o.blots == null ? 5 : o.blots); i++) { const x = R() * W, y = R() * H, r = 150 + R() * 300, g = ctx.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, `rgba(${R() > 0.5 ? '160,130,90' : '255,255,255'},${0.08 + R() * 0.08})`); g.addColorStop(1, 'rgba(255,255,255,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); } ctx.restore();
     if (o.fibers !== false) { ctx.save(); ctx.strokeStyle = 'rgba(120,100,70,.12)'; ctx.lineWidth = 1; for (let i = 0; i < 90; i++) { const x = R() * W, y = R() * H, a = R() * TAU, l = 10 + R() * 26; ctx.beginPath(); ctx.moveTo(x, y); ctx.quadraticCurveTo(x + Math.cos(a) * l * 0.5 + 4, y + Math.sin(a) * l * 0.5, x + Math.cos(a) * l, y + Math.sin(a) * l); ctx.stroke(); } ctx.restore(); }
   };
@@ -166,16 +166,26 @@
   /* ---------- templates ---------- */
   K.COLLAGES = [
     { id: 'travel', name: 'Travel Collage', vars: 3, text: 'loc', ph: 'Where to?', draw(ctx, W, H, E) {
-      const v = E.v % 3, R = E.R; paper(ctx, W, H, E, ['#f2ead8', '#e6edf0', '#f6e6e0'][v], { noise: 0.28 });
-      const main = E.cell(0, 200, 260), pal = palette(main), sub = E.subject(Math.round(W * 0.8 * E.sc)), box = [[90, H * 0.1, 900, H * 0.62], [W * 0.36, H * 0.1, W * 0.6, H * 0.62], [110, H * 0.13, 860, H * 0.58]][v];
-      wash(ctx, box[0] + box[2] * 0.5, box[1] + box[3] * 0.62, box[2] * 0.55, box[3] * 0.4, pal[0], 0.22, R); wash(ctx, box[0] + box[2] * (v === 1 ? 0.3 : 0.7), box[1] + box[3] * 0.35, box[2] * 0.3, box[3] * 0.25, pal[1], 0.2, R); wash(ctx, W * 0.5, H * 0.8, W * 0.5, H * 0.1, pal[2], 0.15, R);
-      ctx.save(); ctx.fillStyle = 'rgba(60,40,20,.18)'; ctx.filter = 'none'; ctx.beginPath(); ctx.ellipse(box[0] + box[2] / 2, box[1] + box[3] - 6, box[2] * 0.32, 18, 0, 0, TAU); ctx.fill(); ctx.restore();
-      if (v === 2) shadow(ctx, E, 26, 12, 0.3, () => { ctx.fillStyle = '#fffdf7'; ctx.fill(tornPath(60, H * 0.09, W - 120, H * 0.66, R, 12)); });
-      let r; shadow(ctx, E, 24, 14, 0.3, () => { r = drawContain(ctx, sub.canvas, box[0], box[1], box[2], box[3]); });
-      for (let i = 0; i < 4; i++) stroke(ctx, 60 + R() * 300, H * (0.62 + R() * 0.12), 260 + R() * 600, H * (0.62 + R() * 0.14) + R() * 40, 18 + R() * 22, pal[i % 3], R, 0.5);
-      stroke(ctx, W * 0.1, H * 0.06, W * 0.45, H * 0.065, 20, pal[1], R, 0.55);
-      const ty = H * 0.8, lf = v === 1; text(ctx, E.c.loc || 'Somewhere nice', lf ? 70 : W / 2, lf ? H * 0.46 : ty, lf ? 130 : 120, K.fonts.hand, '#34304a', lf ? 'left' : 'center', lf ? -0.12 : -0.02); if (lf) squiggle(ctx, 70, H * 0.46 + 36, 300, pal[0], 6); else squiggle(ctx, W * 0.3, ty + 24, W * 0.4, pal[0], 6);
-      text(ctx, E.date, lf ? 76 : W / 2, lf ? H * 0.46 + 96 : ty + 90, 38, K.fonts.type, '#5a4e3c', lf ? 'left' : 'center'); compass(ctx, W * 0.86, H * 0.9, 44, '#34304a'); dashed(ctx, [[W * 0.12, H * 0.93], [W * 0.3, H * 0.9], [W * 0.5, H * 0.945], [W * 0.68, H * 0.9]], '#8a7a62'); plane(ctx, W * 0.7, H * 0.895, 0.9, '#34304a', -0.5);
+      const v = E.v % 3, R = E.R;
+      paper(ctx, W, H, E, ['#f8f3e8', '#f3f1ea', '#f9efe6'][v], { noise: 0.9, blots: 0, soft: true, fibers: false });
+      const main = E.cell(0, 200, 260), pal = palette(main), sub = E.subject(Math.round(W * 0.7 * E.sc));
+      const asp = sub.canvas.width / sub.canvas.height, bw = W * (v === 1 ? 0.6 : 0.66), bh = H * 0.5, bx = v === 1 ? W * 0.34 : (W - bw) / 2, by = H * (v === 2 ? 0.17 : 0.2);
+      let w = bw, h = bw / asp; if (h > bh) { h = bh; w = bh * asp; }
+      const sx = bx + (bw - w) / 2, sy = by + (bh - h) / 2;
+      if (v === 1) { wash(ctx, sx + w * 0.5, sy + h * 0.55, w * 0.62, h * 0.55, pal[0], 0.16, R); wash(ctx, sx + w * 0.2, sy + h * 0.3, w * 0.3, h * 0.28, pal[1], 0.14, R); }
+      if (v === 2) shadow(ctx, E, 22, 10, 0.22, () => { ctx.fillStyle = '#fffdf8'; ctx.fill(tornPath(W * 0.07, H * 0.12, W * 0.86, H * 0.6, R, 10)); });
+      // soft grey brush shadow under the subject
+      wash(ctx, sx + w * 0.55, sy + h * 0.99, w * 0.42, Math.max(10, h * 0.045), '#8a8278', 0.1, R);
+      shadow(ctx, E, 7, 0, 0.3, () => ctx.drawImage(sub.canvas, sx, sy, w, h));
+      // short brush dabs radiating on both sides (like the reference)
+      const dab = pal[0].replace('rgb', 'rgba').replace(')', ',0.85)');
+      [[-0.18, 0.06, -28], [-0.2, 0.16, 0], [-0.17, 0.27, 24]].forEach(([fx, fy, a]) => rot(ctx, sx + w * (0.02 + fx), sy + h * (0.28 + fy), (a * Math.PI) / 180, () => stroke(ctx, -26, 0, 26, 0, 12, dab, R, 0.9)));
+      [[1.18, 0.0, 30], [1.2, 0.1, 0], [1.16, 0.2, -24]].forEach(([fx, fy, a]) => rot(ctx, sx + w * (fx - 0.1), sy + h * (0.22 + fy), (a * Math.PI) / 180, () => stroke(ctx, -26, 0, 26, 0, 12, dab, R, 0.9)));
+      // typewriter date + caption, lower-left
+      const tx = W * 0.12, ty = H * 0.78, col = '#b36f58', loc = (E.c.loc || 'Somewhere nice').toUpperCase();
+      if (v === 1) { text(ctx, E.c.loc || 'Somewhere nice', tx, ty + 8, 104, K.fonts.hand, '#6a4b3c', 'left', -0.03); squiggle(ctx, tx, ty + 34, 360, pal[0], 6); text(ctx, E.dateDot, tx + 4, ty + 96, 36, K.fonts.type, col, 'left'); }
+      else { text(ctx, E.dateDot, tx, ty, 36, K.fonts.type, col, 'left'); text(ctx, loc, tx, ty + 56, 36, K.fonts.type, col, 'left'); }
+      if (v === 2) { compass(ctx, W * 0.84, H * 0.86, 38, 'rgba(120,80,60,.7)'); dashed(ctx, [[W * 0.12, H * 0.92], [W * 0.35, H * 0.89], [W * 0.6, H * 0.935], [W * 0.78, H * 0.9]], 'rgba(120,90,70,.6)'); }
     } },
     { id: 'holiday', name: 'Holiday Journal', vars: 3, text: 'title', ph: 'Holiday Journal', draw(ctx, W, H, E) {
       const v = E.v % 3, R = E.R, ink = ['#2f5fa8', '#c2455a', '#2e7d5b'][v]; gridPaper(ctx, W, H, E, ['#fbf8ee', '#fdf3ee', '#f3f8ee'][v], 'rgba(90,140,190,.22)');

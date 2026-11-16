@@ -46,6 +46,16 @@
   };
   const tintC = (cv, col) => { const t = K.canvas(cv.width, cv.height), x = K.ctx(t); x.drawImage(cv, 0, 0); x.globalCompositeOperation = 'source-in'; x.fillStyle = col; x.fillRect(0, 0, t.width, t.height); return t; };
 
+  /* auto-levels + lift so dim photos become light, airy watercolour */
+  const levelsLift = (c) => {
+    const x = K.ctx(c, 1), im = x.getImageData(0, 0, c.width, c.height), d = im.data, hist = new Uint32Array(256); let n = 0;
+    for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 128) { hist[(0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) | 0]++; n++; }
+    let lo = 0, hi = 255, a = 0; for (let i = 0; i < 256; i++) { a += hist[i]; if (a > n * 0.02) { lo = i; break; } } a = 0; for (let i = 255; i >= 0; i--) { a += hist[i]; if (a > n * 0.015) { hi = i; break; } }
+    const span = Math.max(60, hi - lo);
+    for (let i = 0; i < d.length; i += 4) for (let k = 0; k < 3; k++) { let v = (d[i + k] - lo) / span; v = Math.min(1, Math.max(0, v)); v = Math.pow(v, 0.72); v = v * 0.86 + 0.14 * 0.96; d[i + k] = v * 255; }
+    x.putImageData(im, 0, 0);
+  };
+
   /* painted subject cutout */
   const subject = (ph, st, pxW) => {
     const mk = K.getMask(ph, st), res = K.clamp(Math.round(pxW / 8) * 8, 96, 720);
@@ -53,21 +63,21 @@
       const asp = st.crop.rot % 2 ? ph.h / ph.w : ph.w / ph.h, w = asp >= 1 ? res : Math.round(res * asp), h = asp >= 1 ? Math.round(res / asp) : res;
       const cell = K.photoCell(ph, st, w, h, { main: false, crop: { rot: st.crop.rot, flip: st.crop.flip } }), c = K.canvas(w, h), x = K.ctx(c); x.drawImage(cell, 0, 0);
       const mc = K.canvas(w, h), mx = K.ctx(mc); drawXform(mx, mk, mk.width, mk.height, w, h, { rot: st.crop.rot, flip: st.crop.flip, zoom: 1, px: 0, py: 0 });
-      const mctx = K.ctx(mc, 1), mi = mctx.getImageData(0, 0, w, h), md = mi.data; for (let i = 3; i < md.length; i += 4) md[i] = Math.max(0, Math.min(255, (md[i] - 128) * 3 + 128)); mctx.putImageData(mi, 0, 0);
+      const mctx = K.ctx(mc, 1), mi = mctx.getImageData(0, 0, w, h), md = mi.data; for (let i = 3; i < md.length; i += 4) md[i] = Math.max(0, Math.min(255, (md[i] - 128) * 1.9 + 128)); mctx.putImageData(mi, 0, 0);
       const cov = K.seg.coverage(mc);
       x.globalCompositeOperation = 'destination-in';
       if (cov < 0.02) { const g = x.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.25, w / 2, h / 2, Math.max(w, h) * 0.55); g.addColorStop(0, '#000'); g.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = g; x.fillRect(0, 0, w, h); }
       else x.drawImage(mc, 0, 0);
+      x.globalCompositeOperation = 'destination-in'; { const fb = x.createLinearGradient(0, h * 0.86, 0, h); fb.addColorStop(0, '#000'); fb.addColorStop(1, 'rgba(0,0,0,.05)'); x.fillStyle = fb; x.fillRect(0, 0, w, h); const fl = x.createLinearGradient(0, 0, w * 0.06, 0); fl.addColorStop(0, 'rgba(0,0,0,.15)'); fl.addColorStop(1, '#000'); x.fillStyle = fl; x.fillRect(0, 0, w, h); const fr = x.createLinearGradient(w * 0.94, 0, w, 0); fr.addColorStop(0, '#000'); fr.addColorStop(1, 'rgba(0,0,0,.15)'); x.fillStyle = fr; x.fillRect(0, 0, w, h); }
       x.globalCompositeOperation = 'source-over';
       const d = K.ctx(c, 1).getImageData(0, 0, w, h).data; let x0 = w, y0 = h, x1 = 0, y1 = 0;
       for (let yy = 0; yy < h; yy++) for (let xx = 0; xx < w; xx++) if (d[(yy * w + xx) * 4 + 3] > 40) { if (xx < x0) x0 = xx; if (xx > x1) x1 = xx; if (yy < y0) y0 = yy; if (yy > y1) y1 = yy; }
       if (x1 <= x0 || y1 <= y0) { x0 = 0; y0 = 0; x1 = w - 1; y1 = h - 1; }
       const pad = Math.round(res * 0.02), bx = Math.max(0, x0 - pad), by = Math.max(0, y0 - pad), bw = Math.min(w - bx, x1 - x0 + 2 * pad), bh = Math.min(h - by, y1 - y0 + 2 * pad), out = K.canvas(bw, bh);
       K.ctx(out).drawImage(c, bx, by, bw, bh, 0, 0, bw, bh);
+      levelsLift(out);
       K.paintCanvas(out);
-      const ol = K.canvas(bw + 12, bh + 12), ox = K.ctx(ol), ink = tintC(out, 'rgba(45,36,70,.85)'), t = Math.max(1.5, res / 150);
-      for (let a = 0; a < 8; a++) ox.drawImage(ink, 6 + Math.cos((a * Math.PI) / 4) * t, 6 + Math.sin((a * Math.PI) / 4) * t);
-      ox.drawImage(out, 6, 6);
+      const ol = K.canvas(bw + 16, bh + 16), ox = K.ctx(ol); ox.drawImage(out, 8, 8);
       return { canvas: ol };
     }, 6);
   };
@@ -82,7 +92,7 @@
     if (st.col.id) {
       const tpl = K.COLMAP[st.col.id];
       const E = {
-        sc, seed, R: K.rng(seed + 31), v: st.col.v, c: st.col, date: st.wm.on ? '' : K.fmtDate(new Date(st.wm.date || date), 'type'),
+        sc, seed, R: K.rng(seed + 31), v: st.col.v, c: st.col, date: K.fmtDate(new Date(st.wm.date || date), 'type'), dateDot: (() => { const q = new Date(st.wm.date || date); return `${q.getFullYear()}.${String(q.getMonth() + 1).padStart(2, '0')}.${String(q.getDate()).padStart(2, '0')}`; })(),
         cell(i, w, h) {
           const p = i === 0 ? ph : others[(i - 1) % others.length], same = p === ph; let crop;
           if (i > 0 && same) crop = { zoom: 1 + 0.18 * i, px: ((i % 2) * 2 - 1) * 0.05 * i, py: 0.04 * i };
@@ -96,7 +106,7 @@
     if (st.fx.id) K.effects.apply(out, st.fx.id, st.fx.k, seed);
     let final = out, inner = { x: 0, y: 0, w: W, h: H };
     if (st.border.id) { const b = K.borders.apply(out, st.border.id, st.border.k, st.border.dark, seed); final = b.canvas; inner = b.inner; }
-    if (st.wm.on) K.watermark.draw(K.ctx(final), W, H, st.wm, inner, date);
+    if (st.wm.on && !st.col.id) K.watermark.draw(K.ctx(final), W, H, st.wm, inner, date);
     return final;
   };
 })();

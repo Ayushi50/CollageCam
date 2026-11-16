@@ -125,12 +125,13 @@
       p.appendChild(row);
       const tpl = K.COLMAP[e.st.col.id];
       if (tpl) {
-        p.appendChild(K.h('<p class="mut sm">Tap the selected template again to cycle styles.</p>'));
+        p.appendChild(K.h('<p class="mut sm">Tap the selected template again to cycle styles.' + (tpl.id === 'travel' ? ' Cut-out off? Tap “Edit cut-out”, choose Box and drag around your subject.' : '') + '</p>'));
         if (tpl.text) { const key = tpl.text, inp = K.h(`<input class="inp" placeholder="${K.esc(tpl.ph || '')}" value="${K.esc(e.st.col[key] || '')}" maxlength="28">`); inp.oninput = () => { C().st.col[key] = inp.value; draw('draft'); }; inp.onchange = () => { commit(); draw(); }; p.appendChild(K.h(`<label class="fl">${key === 'loc' ? 'Location caption' : 'Title'}</label>`)); p.appendChild(inp); }
         if (tpl.id === 'holiday') { const l = e.st.col.labels || ['sunrise', 'snacks', 'new friends']; const r = K.h('<div class="row gap"></div>'); l.forEach((v, i) => { const inp = K.h(`<input class="inp" value="${K.esc(v)}" maxlength="14">`); inp.oninput = () => { const s = C().st; s.col.labels = (s.col.labels || l).slice(); s.col.labels[i] = inp.value; draw('draft'); }; inp.onchange = () => { commit(); draw(); }; r.appendChild(inp); }); p.appendChild(K.h('<label class="fl">Photo labels</label>')); p.appendChild(r); }
         if (['travel'].includes(tpl.id)) { const r = K.h('<div class="row gap"><button class="btn" data-cut>✂ Edit cut-out</button><button class="btn" data-auto>Auto cut-out</button></div>'); K.$('[data-cut]', r).onclick = openCutout; K.$('[data-auto]', r).onclick = () => autoCut(); p.appendChild(r); }
       }
     } else if (ed.tab === 'wm') {
+      if (e.st.col.id) p.appendChild(K.h('<p class="mut sm">Collage templates print their own date, so the stamp is hidden while a collage is on.</p>'));
       const on = K.h(`<div class="row gap sp"><b>Date stamp</b><button class="chip ${e.st.wm.on ? 'on' : ''}">${e.st.wm.on ? 'On' : 'Off'}</button></div>`);
       K.$('button', on).onclick = (ev) => { mut((s) => { s.wm.on = !s.wm.on; }); ev.target.classList.toggle('on', C().st.wm.on); ev.target.textContent = C().st.wm.on ? 'On' : 'Off'; };
       p.appendChild(on);
@@ -156,15 +157,25 @@
   async function autoCut() { const e = C(); K.toast('Finding subject…', 900); await new Promise((r) => setTimeout(r, 30)); let m = await K.seg.model(e.ph.src); if (!m) m = K.seg.auto(e.ph.src); const nv = Math.max(...e.ph.masks.keys(), 0) + 1; e.ph.masks.set(nv, m); mut((s) => { s.col.mv = nv; }); }
   function openCutout() {
     const e = C(), ph = e.ph; const base = K.getMask(ph, e.st); let mk = K.canvas(base.width, base.height); K.ctx(mk).drawImage(base, 0, 0);
-    const s = K.sheet(`<div class="cutbar"><button class="btn" data-x>Cancel</button><b>Cut-out</b><button class="btn pri" data-ok>Done</button></div><div class="cutwrap"><canvas id="cutcv"></canvas></div><div class="row gap wrap sp"><button class="chip on" data-m="add">＋ Add</button><button class="chip" data-m="erase">－ Erase</button><button class="chip" data-a>Auto</button><button class="chip" data-all>Select all</button></div><div id="cutsl"></div>`, { cls: 'tall', modal: true });
+    const s = K.sheet(`<div class="cutbar"><button class="btn" data-x>Cancel</button><b>Cut-out</b><button class="btn pri" data-ok>Done</button></div><div class="cutwrap"><canvas id="cutcv"></canvas></div><div class="row gap wrap sp"><button class="chip on" data-m="add">＋ Add</button><button class="chip" data-m="erase">－ Erase</button><button class="chip" data-m="box">▭ Box</button><button class="chip" data-a>Auto</button><button class="chip" data-all>Select all</button></div><div id="cutsl"></div>`, { cls: 'tall', modal: true });
     const cv = K.$('#cutcv', s.el), aspect = ph.w / ph.h; const vw = Math.min(480, Math.round(window.innerWidth - 40), Math.round((window.innerHeight * 0.5) * aspect)); cv.width = vw; cv.height = Math.round(vw / aspect); cv.style.width = cv.width + 'px'; cv.style.height = cv.height + 'px';
-    let mode = 'add', size = 26; const paint = () => { const x = K.ctx(cv); x.clearRect(0, 0, cv.width, cv.height); x.drawImage(ph.src, 0, 0, cv.width, cv.height); const t = K.canvas(cv.width, cv.height), tx = K.ctx(t); tx.fillStyle = '#10101a'; tx.fillRect(0, 0, t.width, t.height); tx.globalCompositeOperation = 'destination-out'; tx.drawImage(mk, 0, 0, t.width, t.height); x.globalAlpha = 0.72; x.drawImage(t, 0, 0); x.globalAlpha = 1; }; paint();
+    let mode = 'add', size = 26; const paint = () => { const x = K.ctx(cv); x.clearRect(0, 0, cv.width, cv.height); x.drawImage(ph.src, 0, 0, cv.width, cv.height); const t = K.canvas(cv.width, cv.height), tx = K.ctx(t); tx.fillStyle = '#10101a'; tx.fillRect(0, 0, t.width, t.height); tx.globalCompositeOperation = 'destination-out'; tx.drawImage(mk, 0, 0, t.width, t.height); x.globalAlpha = 0.72; x.drawImage(t, 0, 0); x.globalAlpha = 1; if (boxR) { x.strokeStyle = '#ffe926'; x.lineWidth = 3; x.setLineDash([8, 6]); x.strokeRect(boxR[0] * cv.width, boxR[1] * cv.height, (boxR[2] - boxR[0]) * cv.width, (boxR[3] - boxR[1]) * cv.height); x.setLineDash([]); } }; let boxR = null, boxS = null; paint();
     K.$$('[data-m]', s.el).forEach((b) => (b.onclick = () => { mode = b.dataset.m; K.$$('[data-m]', s.el).forEach((x) => x.classList.toggle('on', x === b)); }));
     K.$('#cutsl', s.el).appendChild(K.slider({ label: 'Brush', min: 6, max: 70, step: 1, value: size, fmt: (v) => v, oninput: (v) => (size = v) }));
     let down = false, lp = null;
     const pt = (ev) => { const r = cv.getBoundingClientRect(); return [((ev.clientX - r.left) / r.width) * mk.width, ((ev.clientY - r.top) / r.height) * mk.height]; };
     const stroke = (a, b) => { const x = K.ctx(mk); x.save(); x.lineCap = 'round'; x.lineJoin = 'round'; x.lineWidth = (size / cv.width) * mk.width; x.strokeStyle = '#fff'; x.fillStyle = '#fff'; x.globalCompositeOperation = mode === 'add' ? 'source-over' : 'destination-out'; x.beginPath(); x.moveTo(a[0], a[1]); x.lineTo(b[0], b[1]); x.stroke(); x.beginPath(); x.arc(b[0], b[1], x.lineWidth / 2, 0, 7); x.fill(); x.restore(); };
-    cv.addEventListener('pointerdown', (ev) => { down = true; cv.setPointerCapture(ev.pointerId); lp = pt(ev); stroke(lp, lp); paint(); }); cv.addEventListener('pointermove', (ev) => { if (!down) return; const p = pt(ev); stroke(lp, p); lp = p; paint(); }); ['pointerup', 'pointercancel'].forEach((n) => cv.addEventListener(n, () => (down = false)));
+    const nrm = (ev) => { const r = cv.getBoundingClientRect(); return [K.clamp((ev.clientX - r.left) / r.width, 0, 1), K.clamp((ev.clientY - r.top) / r.height, 0, 1)]; };
+    cv.addEventListener('pointerdown', (ev) => { down = true; cv.setPointerCapture(ev.pointerId); if (mode === 'box') { boxS = nrm(ev); boxR = [...boxS, ...boxS]; paint(); return; } lp = pt(ev); stroke(lp, lp); paint(); });
+    cv.addEventListener('pointermove', (ev) => { if (!down) return; if (mode === 'box') { const q = nrm(ev); boxR = [Math.min(boxS[0], q[0]), Math.min(boxS[1], q[1]), Math.max(boxS[0], q[0]), Math.max(boxS[1], q[1])]; paint(); return; } const p = pt(ev); stroke(lp, p); lp = p; paint(); });
+    const endBox = async () => {
+      if (!down) return; down = false; if (mode !== 'box' || !boxR) return; const [x0, y0, x1, y1] = boxR;
+      if (x1 - x0 < 0.08 || y1 - y0 < 0.08) { boxR = null; paint(); return; }
+      K.toast('Cutting out…', 800); await new Promise((r) => setTimeout(r, 30));
+      const m = K.seg.auto(ph.src, { x0, y0, x1, y1 }); mk = K.canvas(base.width, base.height); K.ctx(mk).drawImage(m, 0, 0, mk.width, mk.height); boxR = null; paint();
+      mode = 'add'; K.$$('[data-m]', s.el).forEach((x) => x.classList.toggle('on', x.dataset.m === 'add')); K.toast('Refine with Add / Erase');
+    };
+    ['pointerup', 'pointercancel'].forEach((n) => cv.addEventListener(n, endBox));
     K.$('[data-a]', s.el).onclick = async () => { K.toast('Finding subject…', 900); await new Promise((r) => setTimeout(r, 20)); const m = (await K.seg.model(ph.src)) || K.seg.auto(ph.src); mk = K.canvas(base.width, base.height); K.ctx(mk).drawImage(m, 0, 0, mk.width, mk.height); paint(); };
     K.$('[data-all]', s.el).onclick = () => { mk = K.seg.full(base.width, base.height); paint(); };
     K.$('[data-x]', s.el).onclick = () => s.close();
