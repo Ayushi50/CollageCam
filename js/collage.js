@@ -182,9 +182,9 @@
       [[-0.18, 0.06, -28], [-0.2, 0.16, 0], [-0.17, 0.27, 24]].forEach(([fx, fy, a]) => rot(ctx, sx + w * (0.02 + fx), sy + h * (0.28 + fy), (a * Math.PI) / 180, () => stroke(ctx, -26, 0, 26, 0, 12, dab, R, 0.9)));
       [[1.18, 0.0, 30], [1.2, 0.1, 0], [1.16, 0.2, -24]].forEach(([fx, fy, a]) => rot(ctx, sx + w * (fx - 0.1), sy + h * (0.22 + fy), (a * Math.PI) / 180, () => stroke(ctx, -26, 0, 26, 0, 12, dab, R, 0.9)));
       // typewriter date + caption, lower-left
-      const tx = W * 0.12, ty = H * 0.78, col = '#b36f58', loc = (E.c.loc || 'Somewhere nice').toUpperCase();
-      if (v === 1) { text(ctx, E.c.loc || 'Somewhere nice', tx, ty + 8, 104, K.fonts.hand, '#6a4b3c', 'left', -0.03); squiggle(ctx, tx, ty + 34, 360, pal[0], 6); text(ctx, E.dateDot, tx + 4, ty + 96, 36, K.fonts.type, col, 'left'); }
-      else { text(ctx, E.dateDot, tx, ty, 36, K.fonts.type, col, 'left'); text(ctx, loc, tx, ty + 56, 36, K.fonts.type, col, 'left'); }
+      const tx = W * 0.12, ty = H * 0.78, col = '#b36f58', loc = (E.c.loc || '').toUpperCase();
+      if (v === 1) { if (E.c.loc) { text(ctx, E.c.loc, tx, ty + 8, 104, K.fonts.hand, '#6a4b3c', 'left', -0.03); squiggle(ctx, tx, ty + 34, 360, pal[0], 6); } text(ctx, E.dateDot, tx + 4, ty + 96, 36, K.fonts.type, col, 'left'); }
+      else { text(ctx, E.dateDot, tx, ty, 36, K.fonts.type, col, 'left'); if (loc) text(ctx, loc, tx, ty + 56, 36, K.fonts.type, col, 'left'); }
       if (v === 2) { compass(ctx, W * 0.84, H * 0.86, 38, 'rgba(120,80,60,.7)'); dashed(ctx, [[W * 0.12, H * 0.92], [W * 0.35, H * 0.89], [W * 0.6, H * 0.935], [W * 0.78, H * 0.9]], 'rgba(120,90,70,.6)'); }
     } },
     { id: 'holiday', name: 'Holiday Journal', vars: 3, text: 'title', ph: 'Holiday Journal', draw(ctx, W, H, E) {

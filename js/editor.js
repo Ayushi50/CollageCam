@@ -37,7 +37,8 @@
     if (ed.hold) out = K.render(e.ph, e.st, { width: w, raw: true });
     else out = K.render(e.ph, e.st, { width: w, others: others(e) });
     last = out;
-    if (ed.cmp && !ed.hold) {
+    if (ed.stack && !ed.hold) { const W2 = out.width, oh = Math.round((W2 * e.ph.h) / e.ph.w), o2 = K.canvas(W2, oh + out.height + 12), x2 = K.ctx(o2); x2.fillStyle = '#0b0b0d'; x2.fillRect(0, 0, o2.width, o2.height); x2.imageSmoothingQuality = 'high'; x2.drawImage(e.ph.src, 0, 0, W2, oh); x2.drawImage(out, 0, oh + 12); out = o2; }
+    if (ed.cmp && !ed.hold && !ed.stack) {
       const raw = K.render(e.ph, e.st, { width: w, raw: true }); const o = K.canvas(out.width, out.height), x = K.ctx(o), px = out.width * ed.cmpPos;
       x.drawImage(raw, 0, 0); x.save(); x.beginPath(); x.rect(px, 0, out.width - px, out.height); x.clip(); x.drawImage(out, 0, 0); x.restore();
       x.fillStyle = '#ffe926'; x.fillRect(px - 2, 0, 4, out.height); x.beginPath(); x.arc(px, out.height / 2, 22, 0, 7); x.fill(); x.fillStyle = '#111'; x.font = '700 22px Inter,sans-serif'; x.textAlign = 'center'; x.fillText('◂▸', px, out.height / 2 + 8);
@@ -48,9 +49,11 @@
   }
   const fitRect = () => { const cv = stage(), r = cv.getBoundingClientRect(), ar = cv.width / cv.height, w = Math.min(r.width, r.height * ar); return { w, h: w / ar, r }; };
 
+  function setStack(v) { ed.stack = v; K.$('#ed-stackbtn').classList.toggle('on', v); if (v) { ed.cmp = false; K.$('#ed-cmpbtn').classList.remove('on'); } }
+
   /* ---------- open ---------- */
   K.openEditor = async (items, idx = 0, from = 'gal') => {
-    K.go('ed'); ed.from = from; ed.list = []; ed.cur = idx; ed.cmp = false; ed.hold = false; K.$('#ed-cmpbtn').classList.remove('on'); K.toast('Loading…', 800);
+    K.go('ed'); ed.from = from; ed.list = []; ed.cur = idx; ed.cmp = false; ed.hold = false; ed.stack = false; K.$('#ed-cmpbtn').classList.remove('on'); K.$('#ed-stackbtn').classList.remove('on'); K.toast('Loading…', 800);
     for (const it of items) ed.list.push(await loadEntry(it));
     ed.cur = Math.min(idx, ed.list.length - 1); buildStrip(); updHist(); syncCrop(); draw(); buildPanel();
   };
@@ -120,7 +123,7 @@
     } else if (ed.tab === 'col') {
       const items = [{ id: null, name: 'None' }, ...K.COLLAGES]; const row = cards(items, e.st.col.id, (id, card) => {
         const s = C().st; const same = id === s.col.id && id; mut((t) => { if (same) t.col.v = (t.col.v + 1) % K.COLMAP[id].vars; else { t.col.id = id; t.col.v = 0; } });
-        buildPanel(); if (id && !same && K.S.model) modelMask();
+        buildPanel(); if (id === 'travel' && !same) openCutout({ guide: true }); else if (id && !same && K.S.model) modelMask();
       }, (t, id) => { t.col.id = id; t.col.v = id === e.st.col.id ? e.st.col.v : 0; }, { badge: (it) => (it.id && it.id === e.st.col.id ? `${e.st.col.v + 1}/${it.vars}` : '') });
       p.appendChild(row);
       const tpl = K.COLMAP[e.st.col.id];
@@ -155,16 +158,17 @@
   /* subject cut-out */
   async function modelMask() { const e = C(), mv0 = e.st.col.mv, ph = e.ph; const m = await K.seg.model(ph.src); if (m && C() === e && e.st.col.mv === mv0 && e.st.col.id) { const nv = Math.max(...ph.masks.keys(), 0) + 1; ph.masks.set(nv, m); mut((s) => { s.col.mv = nv; }); K.toast('Cut-out refined with on-device model'); } }
   async function autoCut() { const e = C(); K.toast('Finding subject…', 900); await new Promise((r) => setTimeout(r, 30)); let m = await K.seg.model(e.ph.src); if (!m) m = K.seg.auto(e.ph.src); const nv = Math.max(...e.ph.masks.keys(), 0) + 1; e.ph.masks.set(nv, m); mut((s) => { s.col.mv = nv; }); }
-  function openCutout() {
-    const e = C(), ph = e.ph; const base = K.getMask(ph, e.st); let mk = K.canvas(base.width, base.height); K.ctx(mk).drawImage(base, 0, 0);
-    const s = K.sheet(`<div class="cutbar"><button class="btn" data-x>Cancel</button><b>Cut-out</b><button class="btn pri" data-ok>Done</button></div><div class="cutwrap"><canvas id="cutcv"></canvas></div><div class="row gap wrap sp"><button class="chip on" data-m="add">＋ Add</button><button class="chip" data-m="erase">－ Erase</button><button class="chip" data-m="box">▭ Box</button><button class="chip" data-a>Auto</button><button class="chip" data-all>Select all</button></div><div id="cutsl"></div>`, { cls: 'tall', modal: true });
+  function openCutout(o = {}) {
+    const e = C(), ph = e.ph; const gw = ph.w >= ph.h ? 256 : Math.max(8, Math.round((256 * ph.w) / ph.h)), gh = ph.w >= ph.h ? Math.max(8, Math.round((256 * ph.h) / ph.w)) : 256;
+    const base = o.guide ? K.seg.full(gw, gh) : K.getMask(ph, e.st); let mk = K.canvas(base.width, base.height); K.ctx(mk).drawImage(base, 0, 0);
+    const s = K.sheet(`<div class="cutbar"><button class="btn" data-x>Cancel</button><b>${o.guide ? "Select subject" : "Cut-out"}</b><button class="btn pri" data-ok>${o.guide ? "Create" : "Done"}</button></div>${o.guide ? '<p class="mut sm guide">Drag a box around the area you want painted, then tap Create. You can refine with Add / Erase.</p><input class="inp" id="gloc" maxlength="28" placeholder="Location caption (optional) e.g. Electronic City Phase I" value="${K.esc(e.st.col.loc || "")}">' : ""}<div class="cutwrap"><canvas id="cutcv"></canvas></div><div class="row gap wrap sp"><button class="chip ${o.guide ? "" : "on"}" data-m="add">＋ Add</button><button class="chip" data-m="erase">－ Erase</button><button class="chip ${o.guide ? "on" : ""}" data-m="box">▭ Box</button><button class="chip" data-a>Auto</button><button class="chip" data-all>Select all</button></div><div id="cutsl"></div>`, { cls: 'tall', modal: true });
     const cv = K.$('#cutcv', s.el), aspect = ph.w / ph.h; const vw = Math.min(480, Math.round(window.innerWidth - 40), Math.round((window.innerHeight * 0.5) * aspect)); cv.width = vw; cv.height = Math.round(vw / aspect); cv.style.width = cv.width + 'px'; cv.style.height = cv.height + 'px';
-    let mode = 'add', size = 26; const paint = () => { const x = K.ctx(cv); x.clearRect(0, 0, cv.width, cv.height); x.drawImage(ph.src, 0, 0, cv.width, cv.height); const t = K.canvas(cv.width, cv.height), tx = K.ctx(t); tx.fillStyle = '#10101a'; tx.fillRect(0, 0, t.width, t.height); tx.globalCompositeOperation = 'destination-out'; tx.drawImage(mk, 0, 0, t.width, t.height); x.globalAlpha = 0.72; x.drawImage(t, 0, 0); x.globalAlpha = 1; if (boxR) { x.strokeStyle = '#ffe926'; x.lineWidth = 3; x.setLineDash([8, 6]); x.strokeRect(boxR[0] * cv.width, boxR[1] * cv.height, (boxR[2] - boxR[0]) * cv.width, (boxR[3] - boxR[1]) * cv.height); x.setLineDash([]); } }; let boxR = null, boxS = null; paint();
+    let mode = o.guide ? 'box' : 'add', size = 26; const paint = () => { const x = K.ctx(cv); x.clearRect(0, 0, cv.width, cv.height); x.drawImage(ph.src, 0, 0, cv.width, cv.height); const t = K.canvas(cv.width, cv.height), tx = K.ctx(t); tx.fillStyle = '#10101a'; tx.fillRect(0, 0, t.width, t.height); tx.globalCompositeOperation = 'destination-out'; tx.drawImage(mk, 0, 0, t.width, t.height); x.globalAlpha = 0.72; x.drawImage(t, 0, 0); x.globalAlpha = 1; if (boxR) { x.strokeStyle = '#ffe926'; x.lineWidth = 3; x.setLineDash([8, 6]); x.strokeRect(boxR[0] * cv.width, boxR[1] * cv.height, (boxR[2] - boxR[0]) * cv.width, (boxR[3] - boxR[1]) * cv.height); x.setLineDash([]); } }; let boxR = null, boxS = null; paint();
     K.$$('[data-m]', s.el).forEach((b) => (b.onclick = () => { mode = b.dataset.m; K.$$('[data-m]', s.el).forEach((x) => x.classList.toggle('on', x === b)); }));
     K.$('#cutsl', s.el).appendChild(K.slider({ label: 'Brush', min: 6, max: 70, step: 1, value: size, fmt: (v) => v, oninput: (v) => (size = v) }));
     let down = false, lp = null;
     const pt = (ev) => { const r = cv.getBoundingClientRect(); return [((ev.clientX - r.left) / r.width) * mk.width, ((ev.clientY - r.top) / r.height) * mk.height]; };
-    const stroke = (a, b) => { const x = K.ctx(mk); x.save(); x.lineCap = 'round'; x.lineJoin = 'round'; x.lineWidth = (size / cv.width) * mk.width; x.strokeStyle = '#fff'; x.fillStyle = '#fff'; x.globalCompositeOperation = mode === 'add' ? 'source-over' : 'destination-out'; x.beginPath(); x.moveTo(a[0], a[1]); x.lineTo(b[0], b[1]); x.stroke(); x.beginPath(); x.arc(b[0], b[1], x.lineWidth / 2, 0, 7); x.fill(); x.restore(); };
+    const stroke = (a, b) => { s.drew = true;  const x = K.ctx(mk); x.save(); x.lineCap = 'round'; x.lineJoin = 'round'; x.lineWidth = (size / cv.width) * mk.width; x.strokeStyle = '#fff'; x.fillStyle = '#fff'; x.globalCompositeOperation = mode === 'add' ? 'source-over' : 'destination-out'; x.beginPath(); x.moveTo(a[0], a[1]); x.lineTo(b[0], b[1]); x.stroke(); x.beginPath(); x.arc(b[0], b[1], x.lineWidth / 2, 0, 7); x.fill(); x.restore(); };
     const nrm = (ev) => { const r = cv.getBoundingClientRect(); return [K.clamp((ev.clientX - r.left) / r.width, 0, 1), K.clamp((ev.clientY - r.top) / r.height, 0, 1)]; };
     cv.addEventListener('pointerdown', (ev) => { down = true; cv.setPointerCapture(ev.pointerId); if (mode === 'box') { boxS = nrm(ev); boxR = [...boxS, ...boxS]; paint(); return; } lp = pt(ev); stroke(lp, lp); paint(); });
     cv.addEventListener('pointermove', (ev) => { if (!down) return; if (mode === 'box') { const q = nrm(ev); boxR = [Math.min(boxS[0], q[0]), Math.min(boxS[1], q[1]), Math.max(boxS[0], q[0]), Math.max(boxS[1], q[1])]; paint(); return; } const p = pt(ev); stroke(lp, p); lp = p; paint(); });
@@ -172,14 +176,18 @@
       if (!down) return; down = false; if (mode !== 'box' || !boxR) return; const [x0, y0, x1, y1] = boxR;
       if (x1 - x0 < 0.08 || y1 - y0 < 0.08) { boxR = null; paint(); return; }
       K.toast('Cutting out…', 800); await new Promise((r) => setTimeout(r, 30));
-      const m = K.seg.auto(ph.src, { x0, y0, x1, y1 }); mk = K.canvas(base.width, base.height); K.ctx(mk).drawImage(m, 0, 0, mk.width, mk.height); boxR = null; paint();
+      const m = K.seg.auto(ph.src, { x0, y0, x1, y1 }); s.drew = true; mk = K.canvas(base.width, base.height); K.ctx(mk).drawImage(m, 0, 0, mk.width, mk.height); boxR = null; paint();
       mode = 'add'; K.$$('[data-m]', s.el).forEach((x) => x.classList.toggle('on', x.dataset.m === 'add')); K.toast('Refine with Add / Erase');
     };
     ['pointerup', 'pointercancel'].forEach((n) => cv.addEventListener(n, endBox));
     K.$('[data-a]', s.el).onclick = async () => { K.toast('Finding subject…', 900); await new Promise((r) => setTimeout(r, 20)); const m = (await K.seg.model(ph.src)) || K.seg.auto(ph.src); mk = K.canvas(base.width, base.height); K.ctx(mk).drawImage(m, 0, 0, mk.width, mk.height); paint(); };
-    K.$('[data-all]', s.el).onclick = () => { mk = K.seg.full(base.width, base.height); paint(); };
+    K.$('[data-all]', s.el).onclick = () => { mk = K.seg.full(base.width, base.height); s.drew = true; paint(); };
     K.$('[data-x]', s.el).onclick = () => s.close();
-    K.$('[data-ok]', s.el).onclick = () => { const nv = Math.max(...ph.masks.keys(), 0) + 1; ph.masks.set(nv, mk); mut((st) => { st.col.mv = nv; }); s.close(); };
+    K.$('[data-ok]', s.el).onclick = async () => {
+      if (o.guide && !s.drew) { K.toast('Finding subject…', 900); await new Promise((r) => setTimeout(r, 30)); const m = K.seg.auto(ph.src); mk = K.canvas(base.width, base.height); K.ctx(mk).drawImage(m, 0, 0, mk.width, mk.height); }
+      const nv = Math.max(...ph.masks.keys(), 0) + 1; ph.masks.set(nv, mk); const loc = o.guide ? K.$('#gloc', s.el).value.trim() : null; mut((st) => { st.col.mv = nv; if (loc !== null) st.col.loc = loc; }); s.close(); if (o.guide) buildPanel();
+      if (o.guide) { setStack(true); draw(); K.toast('Original on top, collage below · tap Stack to switch', 2600); }
+    };
   }
 
   /* ---------- crop toolbar ---------- */
@@ -189,11 +197,13 @@
   /* ---------- export ---------- */
   async function exportSheet() {
     await K.persistEditor(); const e = C();
-    const s = K.sheet(`<h3>Export</h3><p class="mut">Full-resolution render of the current photo.</p><div class="row gap"><button class="btn pri" data-f="png">PNG</button><button class="btn pri" data-f="jpg">JPG</button></div><div class="row gap" style="margin-top:10px"><button class="btn" data-share>Share…</button><button class="btn" data-done>Done</button></div><p class="mut sm" id="exst"></p>`);
+    const s = K.sheet(`<h3>Export</h3><p class="mut">Full-resolution render of the current photo.</p><div class="row gap"><button class="btn pri" data-f="png">PNG</button><button class="btn pri" data-f="jpg">JPG</button></div>${e.st.col.id ? '<button class="btn pri block" data-f="stack">Original + collage (stacked PNG)</button>' : ""}<div class="row gap" style="margin-top:10px"><button class="btn" data-share>Share…</button><button class="btn" data-done>Done</button></div><p class="mut sm" id="exst"></p>`);
     const exp = async (fmt, share) => {
       K.$('#exst', s.el).textContent = 'Rendering…'; await new Promise((r) => setTimeout(r, 40));
       const long = Math.max(e.ph.w, e.ph.h), W = K.clamp(Math.round(e.st.crop.rot % 2 ? e.ph.h : e.ph.w), 1080, 3240); void long;
-      const c = K.render(e.ph, e.st, { width: W, others: others(e) }), type = fmt === 'png' ? 'image/png' : 'image/jpeg', blob = await K.toBlob(c, type, 0.93), name = `kapi-${Date.now()}.${fmt === 'png' ? 'png' : 'jpg'}`;
+      let c = K.render(e.ph, e.st, { width: W, others: others(e) });
+      if (fmt === 'stack') { const oh = Math.round((W * e.ph.h) / e.ph.w), gap = Math.round(W * 0.012), o2 = K.canvas(W, oh + gap + c.height), x2 = K.ctx(o2); x2.fillStyle = '#0b0b0d'; x2.fillRect(0, 0, o2.width, o2.height); x2.imageSmoothingQuality = 'high'; x2.drawImage(e.ph.src, 0, 0, W, oh); x2.drawImage(c, 0, oh + gap); c = o2; fmt = 'png'; }
+      const type = fmt === 'png' ? 'image/png' : 'image/jpeg', blob = await K.toBlob(c, type, 0.93), name = `kapi-${Date.now()}.${fmt === 'png' ? 'png' : 'jpg'}`;
       K.$('#exst', s.el).textContent = `${c.width}×${c.height} · ${(blob.size / 1048576).toFixed(1)} MB`;
       K.shareOrDownload(blob, name, share);
     };
@@ -215,7 +225,8 @@
     buildTabs();
     K.$('#ed-back').onclick = leave; K.$('#ed-undo').onclick = () => jump(-1); K.$('#ed-redo').onclick = () => jump(1); K.$('#ed-ok').onclick = exportSheet;
     const hold = K.$('#ed-hold'); const hd = (v) => (ev) => { ev.preventDefault(); ed.hold = v; doDraw(); }; hold.addEventListener('pointerdown', hd(true)); ['pointerup', 'pointerleave', 'pointercancel'].forEach((n) => hold.addEventListener(n, hd(false)));
-    const cb = K.$('#ed-cmpbtn'); cb.onclick = () => { ed.cmp = !ed.cmp; cb.classList.toggle('on', ed.cmp); draw(); };
+    const cb = K.$('#ed-cmpbtn'); cb.onclick = () => { ed.cmp = !ed.cmp; if (ed.cmp) setStack(false); cb.classList.toggle('on', ed.cmp); draw(); };
+    K.$('#ed-stackbtn').onclick = () => { setStack(!ed.stack); draw(); };
     K.$$('#ed-crop [data-r]').forEach((b) => (b.onclick = () => { mut((s) => { s.crop.ratio = b.dataset.r; s.crop.px = s.crop.py = 0; s.crop.zoom = 1; }); syncCrop(); }));
     K.$('#ed-rot').onclick = () => { mut((s) => { s.crop.rot = (s.crop.rot + 1) % 4; s.crop.px = s.crop.py = 0; }); }; K.$('#ed-flip').onclick = () => mut((s) => { s.crop.flip = !s.crop.flip; });
     K.$('#ed-reset').onclick = () => mut((s) => { s.crop.zoom = 1; s.crop.px = s.crop.py = 0; });

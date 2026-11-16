@@ -138,3 +138,6 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border:0;border-radiu
 .ib.sq svg{width:19px;height:19px}.flip svg,.fab svg{width:26px;height:26px}.galbtn svg{width:24px;height:24px}
 .chip svg{width:15px;height:15px;margin-right:6px}#gal-more svg{fill:currentColor}
 .galbtn span{display:grid;place-items:center}.galbtn.has span{display:none}
+
+.cmpb.stk{left:auto;right:18px}.cmpb.stk.on{background:var(--acc);color:#111}
+.guide{margin:0 0 4px;text-align:center}
