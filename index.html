@@ -64,17 +64,26 @@
 
   <!-- EDITOR -->
   <section id="ed" class="screen">
-    <div class="topbar">
-      <button class="ib" id="ed-back" aria-label="Back">‹</button>
-      <div class="row gap"><button class="ib" id="ed-undo" aria-label="Undo" disabled>↶</button><button class="ib" id="ed-redo" aria-label="Redo" disabled>↷</button></div>
-      <button class="ib ok" id="ed-ok" aria-label="Done">✓</button>
+    <div class="edtop">
+      <button class="cbtn" id="ed-back" aria-label="Back"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+      <div class="mid">
+        <button class="ibtn" id="ed-undo" aria-label="Undo" disabled><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/></svg></button>
+        <button class="ibtn" id="ed-redo" aria-label="Redo" disabled><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 000 12h3"/></svg></button>
+      </div>
+      <button class="cbtn" id="ed-ok" aria-label="Done"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg></button>
     </div>
     <div class="stagewrap"><canvas id="ed-stage" width="720" height="960"></canvas>
-      <button class="chip hold" id="ed-hold">hold: compare</button><button class="chip cmpb" id="ed-cmpbtn">◨ Slide</button></div>
-    <div id="ed-crop" class="croprow"><button data-r="9:16">9:16</button><button data-r="3:4">3:4</button><button data-r="4:5">4:5</button><button data-r="1:1">1:1</button><button data-r="orig">Free</button><span class="sp"></span><button id="ed-rot" aria-label="Rotate">⟳</button><button id="ed-flip" aria-label="Mirror">⇋</button><button id="ed-reset" aria-label="Reset zoom">⤢</button></div>
-    <div id="ed-strip" class="strip"></div>
-    <div id="ed-panel" class="panel"></div>
-    <div id="ed-tabs" class="tabs"></div>
+      <button class="chip cmpb" id="ed-cmpbtn">&#9704; Slide</button></div>
+    <div id="ed-crop" class="croprow"><button data-r="9:16">9:16</button><button data-r="3:4">3:4</button><button data-r="4:5">4:5</button><button data-r="1:1">1:1</button><button data-r="orig">Free</button><button id="ed-rot" aria-label="Rotate">&#10227;</button><button id="ed-flip" aria-label="Mirror">&#8651;</button><button id="ed-reset" aria-label="Reset zoom">&#10530;</button></div>
+    <div class="strip2">
+      <div id="ed-strip" class="strip"></div>
+      <button class="sbtn" id="ed-hold" aria-label="Hold to compare"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M12 2v20"/></svg></button>
+    </div>
+    <div class="panel">
+      <div id="ed-ctrl" class="ctrl"></div>
+      <div id="ed-tabs" class="tabs"></div>
+      <div id="ed-cards" class="cards2"></div>
+    </div>
   </section>
 
   <!-- GALLERY -->

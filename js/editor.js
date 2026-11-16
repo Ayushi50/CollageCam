@@ -81,18 +81,11 @@
   let gen = 0;
   function buildTabs() {
     const t = K.$('#ed-tabs'); t.innerHTML = '';
-    TABS.forEach(([id, name]) => { const b = K.h(`<button class="tab ${id === ed.tab ? 'on' : ''}" data-t="${id}"><canvas width="44" height="44"></canvas><span>${name}</span></button>`); b.onclick = () => { ed.tab = id; K.$$('.tab', t).forEach((x) => x.classList.toggle('on', x === b)); buildPanel(); }; t.appendChild(b); });
-    paintTabs();
+    TABS.forEach(([id, name]) => { const b = K.h(`<button class="tab ${id === ed.tab ? 'on' : ''}" data-t="${id}">${name}</button>`); b.onclick = () => { ed.tab = id; K.$$('.tab', t).forEach((x) => x.classList.toggle('on', x === b)); buildPanel(); }; t.appendChild(b); });
   }
-  function paintTabs() {
-    const e = C(); if (!e) return; K.$$('#ed-tabs .tab').forEach((b) => {
-      const id = b.dataset.t, t = K.clone(e.st); t.crop = { ratio: '1:1', rot: e.st.crop.rot, flip: e.st.crop.flip, zoom: 1, px: 0, py: 0 }; t.wm.on = false;
-      if (id === 'filter') t.f.id = e.st.f.id === 'none' ? 'film1' : e.st.f.id; if (id === 'light') t.light = { id: e.st.light.id || 'golden', k: 0.8 }; if (id === 'col') { t.col.id = e.st.col.id || 'grid'; } if (id === 'border') t.border = { id: e.st.border.id || 'polaroid', k: 0.4, dark: false }; if (id === 'fx') t.fx = { id: e.st.fx.id || 'glitch', k: 0.6 }; if (id === 'wm') t.wm.on = true;
-      const c = K.render(e.ph, t, { width: 88, others: others(e) }); K.ctx(K.$('canvas', b)).drawImage(c, 0, 0, 44, 44 * (c.height / c.width) > 44 ? 44 : 44);
-    });
-  }
+  const paintTabs = () => {};
   function buildPanel(rebuild) {
-    const e = C(); if (!e) return; const p = K.$('#ed-panel'); gen++; const g = gen; p.innerHTML = ''; K.$$('#ed-tabs .tab').forEach((x) => x.classList.toggle('on', x.dataset.t === ed.tab)); clearTimeout(paintTabs.t); paintTabs.t = setTimeout(paintTabs, 60);
+    const e = C(); if (!e) return; const p = K.$('#ed-cards'), ctl = K.$('#ed-ctrl'); gen++; const g = gen; p.innerHTML = ''; ctl.innerHTML = ''; K.$$('#ed-tabs .tab').forEach((x) => x.classList.toggle('on', x.dataset.t === ed.tab)); 
     const queue = []; const pump = () => { if (g !== gen || !queue.length) return; queue.shift()(); setTimeout(pump, 0); };
     const cards = (items, cur, onPick, patch, o = {}) => {
       const row = K.h('<div class="cardrow"></div>');
@@ -103,7 +96,7 @@
       });
       setTimeout(pump, 0); return row;
     };
-    const wrap = (...els) => els.forEach((x) => p.appendChild(x));
+    const wrap = (...els) => els.forEach((x) => ctl.appendChild(x));
     if (ed.tab === 'filter') {
       const host = K.h('<div class="fstrip"></div>'); p.appendChild(host);
       const fs = K.filterStrip(host, { current: () => C().st.f.id, onpick: (id) => { mut((s) => { s.f.id = id; }); }, });
