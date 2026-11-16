@@ -56,6 +56,15 @@
     x.putImageData(im, 0, 0);
   };
 
+  /* darker warm pigment pooling along the edge, like wet watercolour */
+  const wetEdge = (c) => {
+    const W = c.width, H = c.height, x = K.ctx(c, 1), im = x.getImageData(0, 0, W, H), d = im.data;
+    const sm = K.canvas(Math.max(4, W >> 2), Math.max(4, H >> 2)); K.ctx(sm).drawImage(c, 0, 0, sm.width, sm.height);
+    const bl = K.canvas(W, H), bx = K.ctx(bl, 1); bx.imageSmoothingQuality = 'high'; bx.drawImage(sm, 0, 0, W, H); const b = bx.getImageData(0, 0, W, H).data;
+    for (let i = 0; i < d.length; i += 4) { const al = d[i + 3] / 255, rim = Math.min(1, Math.max(0, (al - b[i + 3] / 255) * 1.7)) * al; if (rim > 0.02) { const k = 0.34 * rim; d[i] = d[i] * (1 - k) + 128 * k; d[i + 1] = d[i + 1] * (1 - k) + 84 * k; d[i + 2] = d[i + 2] * (1 - k) + 62 * k; } }
+    x.putImageData(im, 0, 0);
+  };
+
   /* painted subject cutout */
   const subject = (ph, st, pxW) => {
     const mk = K.getMask(ph, st), res = K.clamp(Math.round(pxW / 8) * 8, 96, 720);
@@ -76,7 +85,7 @@
       const pad = Math.round(res * 0.02), bx = Math.max(0, x0 - pad), by = Math.max(0, y0 - pad), bw = Math.min(w - bx, x1 - x0 + 2 * pad), bh = Math.min(h - by, y1 - y0 + 2 * pad), out = K.canvas(bw, bh);
       K.ctx(out).drawImage(c, bx, by, bw, bh, 0, 0, bw, bh);
       levelsLift(out);
-      K.paintCanvas(out);
+      K.paintCanvas(out); wetEdge(out);
       const ol = K.canvas(bw + 16, bh + 16), ox = K.ctx(ol); ox.drawImage(out, 8, 8);
       return { canvas: ol };
     }, 6);

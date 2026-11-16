@@ -46,6 +46,37 @@
       m = this.box(m, w, h, 1);
       const coarse = this.toCanvas(m, w, h); try { return this.refine(src, coarse); } catch (e) { return coarse; }
     },
+    sigma(d, cs, idx) { const v = cs.map(() => [0, 0]); idx.forEach((p) => { let b = 0, bd = 1e9; cs.forEach((q, j) => { const dd = (d[p * 4] - q[0]) ** 2 + (d[p * 4 + 1] - q[1]) ** 2 + (d[p * 4 + 2] - q[2]) ** 2; if (dd < bd) { bd = dd; b = j; } }); v[b][0] += bd; v[b][1]++; }); return v.map((x) => Math.sqrt(x[0] / Math.max(1, x[1]) / 3) + 12); },
+    cdist(d, i, cs, sg) { let m = 1e9; for (let j = 0; j < cs.length; j++) { const q = cs[j], dd = Math.sqrt(((d[i * 4] - q[0]) ** 2 + (d[i * 4 + 1] - q[1]) ** 2 + (d[i * 4 + 2] - q[2]) ** 2) / 3) / sg[j]; if (dd < m) m = dd; } return m; },
+    /* user scribbles (subject / background) + previous mask → new mask */
+    fromSeeds(src, fgC, bgC, prior) {
+      const sc = this.L / Math.max(src.width, src.height), w = Math.max(8, Math.round(src.width * sc)), h = Math.max(8, Math.round(src.height * sc)), N = w * h;
+      const rd = (cv) => { const t = K.canvas(w, h), x = K.ctx(t, 1); x.drawImage(cv, 0, 0, w, h); const a = x.getImageData(0, 0, w, h).data, o = new Float32Array(N); for (let i = 0; i < N; i++) o[i] = a[i * 4 + 3] / 255; return o; };
+      const t = K.canvas(w, h), tc = K.ctx(t, 1); tc.drawImage(src, 0, 0, w, h); const d = tc.getImageData(0, 0, w, h).data;
+      const sf = rd(fgC), sb = rd(bgC), pr = rd(prior), prE = this.box(pr, w, h, 3), fg = [], bg = [];
+      for (let i = 0; i < N; i++) { if (sf[i] > 0.5) fg.push(i, i, i); else if (prE[i] > 0.97) fg.push(i); if (sb[i] > 0.5) bg.push(i, i, i); else if (prE[i] < 0.03) bg.push(i); }
+      if (fg.length < 30 || bg.length < 30) return prior;
+      const F = this.km(d, fg, 5), B = this.km(d, bg, 5), sF = this.sigma(d, F, fg), sB = this.sigma(d, B, bg);
+      const wR = new Float32Array(N), wD = new Float32Array(N), sg2 = 22 * 22;
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = y * w + x, p = i * 4; if (x < w - 1) { const q = p + 4; wR[i] = Math.exp(-(((d[p] - d[q]) ** 2 + (d[p + 1] - d[q + 1]) ** 2 + (d[p + 2] - d[q + 2]) ** 2) / 3) / sg2); } if (y < h - 1) { const q = p + w * 4; wD[i] = Math.exp(-(((d[p] - d[q]) ** 2 + (d[p + 1] - d[q + 1]) ** 2 + (d[p + 2] - d[q + 2]) ** 2) / 3) / sg2); } }
+      let score = new Float32Array(N); const clampSeeds = () => { for (let i = 0; i < N; i++) { if (sf[i] > 0.5) score[i] = 5; else if (sb[i] > 0.5) score[i] = -5; } };
+      for (let i = 0; i < N; i++) score[i] = (this.cdist(d, i, B, sB) - this.cdist(d, i, F, sF)) * 1.2 + (pr[i] - 0.5) * 2.6;
+      clampSeeds();
+      for (let k = 0; k < 14; k++) { const nx = new Float32Array(N); for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = y * w + x; let s = score[i], ws = 1; if (x < w - 1) { s += score[i + 1] * wR[i]; ws += wR[i]; } if (x > 0) { s += score[i - 1] * wR[i - 1]; ws += wR[i - 1]; } if (y < h - 1) { s += score[i + w] * wD[i]; ws += wD[i]; } if (y > 0) { s += score[i - w] * wD[i - w]; ws += wD[i - w]; } nx[i] = s / ws; } score = nx; clampSeeds(); }
+      const lab = new Uint8Array(N); for (let i = 0; i < N; i++) lab[i] = score[i] > 0 ? 1 : 0;
+      // keep regions that contain subject seeds / the previous subject
+      const id = new Int32Array(N), keep = []; let n = 0;
+      for (let s0 = 0; s0 < N; s0++) if (lab[s0] && !id[s0]) { n++; let hit = 0, cnt = 0; const st = [s0]; id[s0] = n; while (st.length) { const q = st.pop(), qx = q % w, qy = (q / w) | 0; cnt++; if (sf[q] > 0.5) hit += 5; else if (pr[q] > 0.5) hit++; [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dx, dy]) => { const nx = qx + dx, ny = qy + dy; if (nx >= 0 && ny >= 0 && nx < w && ny < h) { const ni = ny * w + nx; if (lab[ni] && !id[ni]) { id[ni] = n; st.push(ni); } } }); } keep[n] = { hit, cnt }; }
+      let m = new Float32Array(N); let any = false; for (let i = 0; i < N; i++) if (id[i] && keep[id[i]].hit > 0 && keep[id[i]].cnt > 30) { m[i] = 1; any = true; }
+      if (!any) return prior;
+      const bgm = new Uint8Array(N), stk = []; for (let x = 0; x < w; x++) { stk.push(x, (h - 1) * w + x); } for (let y = 0; y < h; y++) { stk.push(y * w, y * w + w - 1); }
+      const seeds = stk.filter((i) => !m[i]); seeds.forEach((i) => (bgm[i] = 1));
+      while (seeds.length) { const q = seeds.pop(), qx = q % w, qy = (q / w) | 0; [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dx, dy]) => { const nx = qx + dx, ny = qy + dy; if (nx >= 0 && ny >= 0 && nx < w && ny < h) { const ni = ny * w + nx; if (!m[ni] && !bgm[ni]) { bgm[ni] = 1; seeds.push(ni); } } }); }
+      for (let i = 0; i < N; i++) m[i] = bgm[i] ? 0 : 1;
+      const thr = (a, t) => { for (let i = 0; i < N; i++) a[i] = a[i] > t ? 1 : 0; return a; };
+      m = thr(this.box(m, w, h, 3), 0.3); m = thr(this.box(m, w, h, 3), 0.7); m = thr(this.box(m, w, h, 2), 0.75); m = thr(this.box(m, w, h, 2), 0.25); m = this.box(m, w, h, 1);
+      const coarse = this.toCanvas(m, w, h); try { return this.refine(src, coarse); } catch (e) { return coarse; }
+    },
     km(d, idx, k) { // small k-means on RGB samples
       const pts = [], stp = Math.max(1, Math.floor(idx.length / 700)); for (let i = 0; i < idx.length; i += stp) pts.push(idx[i]);
       const cen = []; for (let j = 0; j < k; j++) { const p = pts[Math.floor((j * pts.length) / k)]; cen.push([d[p * 4], d[p * 4 + 1], d[p * 4 + 2]]); }
@@ -71,22 +102,18 @@
     box(a, w, h, r) { const o = new Float32Array(a.length), t = new Float32Array(a.length), k = 2 * r + 1; for (let y = 0; y < h; y++) { let s = 0; for (let x = -r; x <= r; x++) s += a[y * w + Math.min(w - 1, Math.max(0, x))]; for (let x = 0; x < w; x++) { t[y * w + x] = s / k; s += a[y * w + Math.min(w - 1, x + r + 1)] - a[y * w + Math.max(0, x - r)]; } } for (let x = 0; x < w; x++) { let s = 0; for (let y = -r; y <= r; y++) s += t[Math.min(h - 1, Math.max(0, y)) * w + x]; for (let y = 0; y < h; y++) { o[y * w + x] = s / k; s += t[Math.min(h - 1, y + r + 1) * w + x] - t[Math.max(0, y - r) * w + x]; } } return o; },
     toCanvas(m, w, h) { const c = K.canvas(w, h), x = K.ctx(c, 1), im = x.createImageData(w, h); for (let i = 0; i < m.length; i++) { im.data[i * 4] = im.data[i * 4 + 1] = im.data[i * 4 + 2] = 255; im.data[i * 4 + 3] = m[i] * 255; } x.putImageData(im, 0, 0); return c; },
     coverage(mc) { const x = K.ctx(mc, 1), d = x.getImageData(0, 0, mc.width, mc.height).data; let a = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 127) a++; return a / (d.length / 4); },
+    /* general-purpose AI background removal (runs in the browser; one-time model download, needs internet) */
     async model(src) {
       if (typeof window.__kapiSegmenter === 'function') { try { return await window.__kapiSegmenter(src); } catch (e) {} }
       if (!K.S.model || !navigator.onLine) return null;
       try {
-        if (!this._seg) this._seg = (async () => {
-          const base = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
-          const v = await import(base + '/vision_bundle.mjs'), fs = await v.FilesetResolver.forVisionTasks(base + '/wasm');
-          return v.ImageSegmenter.createFromOptions(fs, { baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite' }, runningMode: 'IMAGE', outputConfidenceMasks: true, outputCategoryMask: false });
-        })();
-        const seg = await Promise.race([this._seg, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 9000))]);
-        const sc = 256 / Math.max(src.width, src.height), t = K.canvas(src.width * sc, src.height * sc); K.ctx(t).drawImage(src, 0, 0, t.width, t.height);
-        const res = seg.segment(t), mk = res.confidenceMasks[0], arr = mk.getAsFloat32Array(), w = mk.width, h = mk.height; let ctr = 0, cn = 0, edge = 0, en = 0;
-        for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const v = arr[y * w + x]; if (x > w * 0.3 && x < w * 0.7 && y > h * 0.3 && y < h * 0.7) { ctr += v; cn++; } else if (x < 3 || y < 3 || x > w - 4 || y > h - 4) { edge += v; en++; } }
-        const inv = ctr / cn < edge / en, m = new Float32Array(arr.length); for (let i = 0; i < m.length; i++) m[i] = inv ? 1 - arr[i] : arr[i];
-        res.close && res.close(); const c = this.toCanvas(this.box(m, w, h, 1), w, h); const cov = this.coverage(c); return cov > 0.03 && cov < 0.92 ? c : null;
-      } catch (e) { this._seg = null; this.failed = true; return null; }
+        if (!this._ai) { K.toast('Loading AI cut-out model (one-time download)…', 4500); this._ai = import('https://esm.sh/@imgly/background-removal@1.5.5').then((m) => m.removeBackground || m.default); }
+        const fn = await Promise.race([this._ai, new Promise((_, rej) => setTimeout(() => rej(new Error('model load timeout')), 120000))]);
+        const sc = Math.min(1, 1024 / Math.max(src.width, src.height)), t = K.canvas(src.width * sc, src.height * sc); K.ctx(t).drawImage(src, 0, 0, t.width, t.height);
+        const out = await fn(await K.toBlob(t, 'image/png'), { output: { format: 'image/png' } });
+        const big = await K.blobToCanvas(out), k = Math.min(1, 400 / Math.max(big.width, big.height)), mc = K.canvas(big.width * k, big.height * k); K.ctx(mc).drawImage(big, 0, 0, mc.width, mc.height);
+        const cov = this.coverage(mc); if (!(cov > 0.02 && cov < 0.95)) return null; return mc;
+      } catch (e) { this._ai = null; this.failed = e; console.warn('AI cut-out unavailable:', e); return null; }
     },
   };
 
@@ -129,6 +156,7 @@
   const paper = (ctx, W, H, E, base, o = {}) => {
     ctx.fillStyle = base; ctx.fillRect(0, 0, W, H);
     const R = K.rng(E.seed + 1); ctx.save(); ctx.globalCompositeOperation = o.soft ? 'soft-light' : 'multiply'; ctx.globalAlpha = o.noise == null ? 0.22 : o.noise; ctx.fillStyle = ctx.createPattern(noiseTile(), 'repeat'); ctx.fillRect(0, 0, W, H); ctx.restore();
+    if (o.soft) { ctx.save(); ctx.globalCompositeOperation = 'multiply'; ctx.globalAlpha = 0.06; ctx.fillStyle = ctx.createPattern(noiseTile(), 'repeat'); ctx.save(); ctx.scale(1.7, 1.7); ctx.fillRect(0, 0, W / 1.7, H / 1.7); ctx.restore(); ctx.restore(); }
     ctx.save(); for (let i = 0; i < (o.blots == null ? 5 : o.blots); i++) { const x = R() * W, y = R() * H, r = 150 + R() * 300, g = ctx.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, `rgba(${R() > 0.5 ? '160,130,90' : '255,255,255'},${0.08 + R() * 0.08})`); g.addColorStop(1, 'rgba(255,255,255,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); } ctx.restore();
     if (o.fibers !== false) { ctx.save(); ctx.strokeStyle = 'rgba(120,100,70,.12)'; ctx.lineWidth = 1; for (let i = 0; i < 90; i++) { const x = R() * W, y = R() * H, a = R() * TAU, l = 10 + R() * 26; ctx.beginPath(); ctx.moveTo(x, y); ctx.quadraticCurveTo(x + Math.cos(a) * l * 0.5 + 4, y + Math.sin(a) * l * 0.5, x + Math.cos(a) * l, y + Math.sin(a) * l); ctx.stroke(); } ctx.restore(); }
   };
